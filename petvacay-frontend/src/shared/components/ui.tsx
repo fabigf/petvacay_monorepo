@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
 
-/** Primitivas de UI reutilizables. Sustituibles por Shadcn/ui sin tocar los modulos. */
+/** Primitivas de UI reutilizables. Sustituibles por Shadcn/ui sin tocar los módulos. */
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 
@@ -96,9 +96,11 @@ export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSe
 export function Badge({
   children,
   tone = 'neutral',
+  className = '',
 }: {
   children: ReactNode
   tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'info'
+  className?: string
 }) {
   const tones = {
     neutral: 'bg-slate-100 text-slate-700',
@@ -108,7 +110,9 @@ export function Badge({
     info: 'bg-sky-100 text-sky-800',
   }
   return (
-    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${tones[tone]}`}>
+    <span
+      className={`inline-flex items-center justify-center text-center rounded-full px-2.5 py-1 text-xs font-semibold ${tones[tone]} ${className}`}
+    >
       {children}
     </span>
   )
@@ -133,11 +137,11 @@ export function Skeleton({ className = '' }: { className?: string }) {
 }
 
 /**
- * Aviso de consistencia eventual (fases.md Fase 3): informa de que una accion se
- * confirmo en el modelo de escritura pero sus efectos derivados (proyecciones que
+ * Aviso de consistencia eventual (fases.md Fase 3): informa de que una acción se
+ * confirmó en el modelo de escritura pero sus efectos derivados (proyecciones que
  * viajan por Kafka, como el bloqueo de calendario del buscador) pueden tardar unos
  * segundos en reflejarse. No es un error ni un estado de carga bloqueante: la
- * accion ya tuvo exito, esto solo gestiona la expectativa del usuario.
+ * acción ya tuvo éxito, esto solo gestiona la expectativa del usuario.
  */
 export function ProcessingNotice({ children }: { children: ReactNode }) {
   return (

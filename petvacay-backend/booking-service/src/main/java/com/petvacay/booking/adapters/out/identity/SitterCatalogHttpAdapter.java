@@ -1,5 +1,6 @@
 package com.petvacay.booking.adapters.out.identity;
 
+import com.petvacay.booking.domain.model.ServiceType;
 import com.petvacay.booking.ports.out.SitterCatalogPort;
 import com.petvacay.shared.domain.Money;
 import org.slf4j.Logger;
@@ -14,7 +15,8 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
-import java.util.Currency;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -88,21 +90,30 @@ public class SitterCatalogHttpAdapter implements SitterCatalogPort {
     }
 
     private SitterSummary toDomain(SitterSummaryResponse response) {
+        Map<ServiceType, Money> servicePrices = new EnumMap<>(ServiceType.class);
+        response.servicePrices().forEach((type, amount) -> servicePrices.put(type, new Money(amount, Money.EUR)));
+
         return new SitterSummary(
                 response.sitterId(),
                 response.firstName(),
                 response.verified(),
-                new Money(response.pricePerNight(), Currency.getInstance(response.currency())),
+                servicePrices,
                 response.maxSimultaneousPets());
     }
 
-    /** Espejo del DTO expuesto por {@code IdentityController.SitterSummaryResponse}. */
+    /**
+     * Espejo del DTO expuesto por {@code IdentityController.SitterSummaryResponse}.
+     * Las claves del mapa llegan como texto ("NIGHT_ACCOMMODATION"...) y Jackson
+     * las resuelve directamente contra este {@link ServiceType} local — el mismo
+     * criterio de duplicacion deliberada en el limite, aplicado tambien al enum:
+     * es el de booking-service, no el de identity-service, aunque compartan los
+     * mismos nombres de valor.
+     */
     private record SitterSummaryResponse(
             UUID sitterId,
             String firstName,
             boolean verified,
-            BigDecimal pricePerNight,
-            String currency,
+            Map<ServiceType, BigDecimal> servicePrices,
             int maxSimultaneousPets) {
     }
 }

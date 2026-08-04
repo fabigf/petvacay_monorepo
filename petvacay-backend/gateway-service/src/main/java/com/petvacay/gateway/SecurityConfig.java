@@ -55,6 +55,17 @@ public class SecurityConfig {
                         // El buscador es publico a proposito (ver search-service).
                         .pathMatchers(HttpMethod.GET, "/api/v1/search/**").permitAll()
 
+                        // Las resenas de un cuidador son su vitrina de reputacion: un
+                        // visitante debe poder verlas antes de registrarse, igual que el
+                        // buscador. Crear una resena SI exige JWT (regla por defecto, mas
+                        // abajo): solo puede dejarla quien participo en la reserva.
+                        .pathMatchers(HttpMethod.GET, "/api/v1/reviews/**").permitAll()
+
+                        // Solo alcanzable dentro de la red de Docker (el puerto del Gateway
+                        // no se publica en produccion): exigir JWT aqui no anade seguridad
+                        // real y le pediria a Prometheus manejar credenciales.
+                        .pathMatchers("/actuator/health/**", "/actuator/prometheus").permitAll()
+
                         // El webhook lo invoca Stripe desde internet, sin sesion de
                         // usuario: exigir JWT aqui haria imposible recibir la
                         // confirmacion de los pagos. Su autenticacion es la firma

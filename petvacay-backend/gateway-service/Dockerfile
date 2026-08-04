@@ -25,4 +25,12 @@ COPY --from=build /build/gateway-service/target/*.jar app.jar
 USER petvacay
 
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+
+# Ver identity-service/Dockerfile: heap explicito y ajustable, para no depender
+# de la deteccion automatica de memoria del host cuando conviven varias JVMs.
+ENV JAVA_OPTS="-Xms256m -Xmx384m \
+  -XX:+ExitOnOutOfMemoryError \
+  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp/gateway-service.hprof \
+  -Xlog:gc:stdout:time,uptime,level,tags"
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

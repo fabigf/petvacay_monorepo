@@ -1,6 +1,6 @@
 /**
  * Contratos de API compartidos con el backend (especificaciones.md).
- * El tipado estricto es la primera linea de defensa cuando el backend evolucione
+ * El tipado estricto es la primera línea de defensa cuando el backend evolucione
  * hacia microservicios en Fase 4.
  */
 
@@ -30,10 +30,20 @@ export interface SitterSearchResult {
   sitterId: string
   firstName: string
   rating: number
+  reviewCount: number
   distanceKm: number
   pricePerNight: number
   currency: string
   homeType: HomeType
+  photoUrl?: string
+  acceptedSpecies: Species[]
+  offeredServices: ServiceType[]
+}
+
+export interface GeocodeResult {
+  lat: number
+  lng: number
+  displayName: string
 }
 
 export interface SearchFilters {
@@ -109,21 +119,46 @@ export interface UserProfile {
   active: boolean
 }
 
+/**
+ * Tarifa por servicio: el cuidador puede ofrecer solo alguno de los tres
+ * (negocio.md sección 2), así que las claves ausentes significan "no lo ofrece".
+ */
+export type ServicePrices = Partial<Record<ServiceType, number>>
+
 export interface SitterProfile {
   sitterId: string
+  /**
+   * Solo llega en la vista pública (`GET /sitters/{id}/profile`); las respuestas
+   * a operaciones sobre el propio perfil lo omiten.
+   */
+  firstName?: string
   description?: string
   homeType: HomeType
   latitude: number
   longitude: number
-  pricePerNight: number
+  servicePrices: ServicePrices
   currency: string
   maxSimultaneousPets: number
   acceptedSpecies: Species[]
   maxPetWeightKg?: number
+  photoUrl?: string
   verificationStatus: VerificationStatus
   searchable: boolean
   rejectionReason?: string
   verifiedAt?: string
+}
+
+export type ReviewAuthorRole = 'CLIENT' | 'SITTER'
+
+export interface Review {
+  reviewId: string
+  bookingId: string
+  authorId: string
+  subjectId: string
+  authorRole: ReviewAuthorRole
+  rating: number
+  comment?: string
+  createdAt: string
 }
 
 /** Formato RFC 7807 devuelto por el backend (especificaciones.md 4). */

@@ -10,6 +10,7 @@ import com.petvacay.booking.ports.out.BookingRepositoryPort;
 import com.petvacay.booking.ports.out.SitterCatalogPort;
 import com.petvacay.shared.domain.BusinessRuleViolationException;
 import com.petvacay.shared.domain.DateRange;
+import com.petvacay.shared.domain.Money;
 import com.petvacay.shared.domain.ResourceNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,10 +59,17 @@ public class BookingApplicationService implements CreateBookingUseCase, ManageBo
                     "El cuidador seleccionado aún no ha superado el proceso de verificación de identidad.");
         }
 
+        Money price = sitter.servicePrices().get(command.serviceType());
+        if (price == null) {
+            throw BusinessRuleViolationException.conflict(
+                    "ERR_SERVICE_NOT_OFFERED", "Servicio no ofrecido",
+                    "Este cuidador no ofrece el servicio solicitado.");
+        }
+
         assertCapacityAvailable(sitter, dates, command.petIds().size());
 
         Booking booking = Booking.draft(UUID.randomUUID(), command.clientId(), command.sitterId(),
-                command.petIds(), dates, command.serviceType(), sitter.pricePerNight());
+                command.petIds(), dates, command.serviceType(), price);
         booking.request(now());
 
         return persist(booking);

@@ -3,7 +3,7 @@ import { Badge } from '@/shared/components/ui'
 
 type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
 
-/** Traduccion de la maquina de estados del dominio a lenguaje de usuario. */
+/** Traducción de la máquina de estados del dominio a lenguaje de usuario. */
 const statusPresentation: Record<BookingStatus, { label: string; tone: Tone }> = {
   BORRADOR: { label: 'Borrador', tone: 'neutral' },
   SOLICITADO: { label: 'Pendiente de respuesta', tone: 'warning' },

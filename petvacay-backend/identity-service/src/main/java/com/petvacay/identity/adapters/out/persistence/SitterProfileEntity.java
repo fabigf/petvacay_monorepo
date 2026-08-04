@@ -2,6 +2,7 @@ package com.petvacay.identity.adapters.out.persistence;
 
 import com.petvacay.identity.domain.model.GeoLocation;
 import com.petvacay.identity.domain.model.HomeType;
+import com.petvacay.identity.domain.model.ServiceType;
 import com.petvacay.identity.domain.model.SitterProfile;
 import com.petvacay.identity.domain.model.Species;
 import com.petvacay.identity.domain.model.VerificationStatus;
@@ -15,13 +16,17 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
+import jakarta.persistence.MapKeyEnumerated;
 import jakarta.persistence.Table;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.Currency;
+import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -46,11 +51,17 @@ public class SitterProfileEntity {
     @Column(nullable = false)
     private double longitude;
 
-    @Column(name = "price_per_night", nullable = false, precision = 12, scale = 2)
-    private BigDecimal pricePerNight;
-
-    @Column(nullable = false, length = 3)
-    private String currency;
+    /**
+     * Un cuidador define sus propios servicios y su propia tarifa para cada uno
+     * (negocio.md seccion 2) — no una unica tarifa. Todo en EUR, como el resto
+     * de la plataforma, asi que no hace falta columna de moneda por fila.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "sitter_service_prices", joinColumns = @JoinColumn(name = "sitter_id"))
+    @MapKeyColumn(name = "service_type")
+    @MapKeyEnumerated(EnumType.STRING)
+    @Column(name = "price", nullable = false, precision = 12, scale = 2)
+    private Map<ServiceType, BigDecimal> servicePrices = new EnumMap<>(ServiceType.class);
 
     @Column(name = "max_simultaneous_pets", nullable = false)
     private int maxSimultaneousPets;
@@ -63,6 +74,9 @@ public class SitterProfileEntity {
 
     @Column(name = "max_pet_weight_kg", precision = 6, scale = 2)
     private BigDecimal maxPetWeightKg;
+
+    @Column(name = "photo_url", length = 2000)
+    private String photoUrl;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "verification_status", nullable = false)
@@ -87,11 +101,12 @@ public class SitterProfileEntity {
         entity.homeType = profile.homeType();
         entity.latitude = profile.location().latitude();
         entity.longitude = profile.location().longitude();
-        entity.pricePerNight = profile.pricePerNight().amount();
-        entity.currency = profile.pricePerNight().currency().getCurrencyCode();
+        entity.servicePrices = new EnumMap<>(ServiceType.class);
+        profile.servicePrices().forEach((type, money) -> entity.servicePrices.put(type, money.amount()));
         entity.maxSimultaneousPets = profile.maxSimultaneousPets();
         entity.acceptedSpecies = new HashSet<>(profile.acceptedSpecies());
         entity.maxPetWeightKg = profile.maxPetWeightKg();
+        entity.photoUrl = profile.photoUrl();
         entity.verificationStatus = profile.verificationStatus();
         entity.identityDocumentReference = profile.identityDocumentReference();
         entity.rejectionReason = profile.rejectionReason();
@@ -100,15 +115,20 @@ public class SitterProfileEntity {
     }
 
     public SitterProfile toDomain() {
+        Map<ServiceType, Money> prices = new EnumMap<>(ServiceType.class);
+        (servicePrices == null ? new HashMap<ServiceType, BigDecimal>() : servicePrices)
+                .forEach((type, amount) -> prices.put(type, new Money(amount, Money.EUR)));
+
         return SitterProfile.rehydrate(
                 sitterId,
                 description,
                 homeType,
                 new GeoLocation(latitude, longitude),
-                new Money(pricePerNight, Currency.getInstance(currency)),
+                prices,
                 maxSimultaneousPets,
                 acceptedSpecies.isEmpty() ? EnumSet.allOf(Species.class) : EnumSet.copyOf(acceptedSpecies),
                 maxPetWeightKg,
+                photoUrl,
                 verificationStatus,
                 identityDocumentReference,
                 rejectionReason,

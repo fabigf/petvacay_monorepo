@@ -52,6 +52,38 @@ spring:
                 redis-rate-limiter.replenishRate: 30
                 redis-rate-limiter.burstCapacity: 60
 
+        # Prefijo propio: las resenas publicas de un cuidador no son una
+        # operacion "de una reserva concreta" (eso ya lo cubre la ruta de
+        # arriba), son la vitrina de reputacion de cara al buscador. Las sirve
+        # booking-service, que es quien tiene el agregado Review.
+        - id: reviews
+          uri: ${BOOKING_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/reviews/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: '#{@clientIpKeyResolver}'
+                redis-rate-limiter.replenishRate: 30
+                redis-rate-limiter.burstCapacity: 60
+
+        # Ruta separada y ANTES que la general de search-service (Gateway evalua
+        # rutas en orden, la primera que casa gana): /geocode reenvia a Nominatim,
+        # cuya politica de uso exige un maximo de 1 peticion/segundo EN TOTAL. El
+        # limite de aqui es por IP, no global, asi que no lo garantiza del todo
+        # con muchos usuarios concurrentes — ver el javadoc de
+        # NominatimGeocodingAdapter para el plan si esto pasa a produccion real.
+        - id: search-geocode
+          uri: ${SEARCH_SERVICE_URL:http://localhost:8084}
+          predicates:
+            - Path=/api/v1/search/geocode
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: '#{@clientIpKeyResolver}'
+                redis-rate-limiter.replenishRate: 1
+                redis-rate-limiter.burstCapacity: 2
+
         - id: search-service
           uri: ${SEARCH_SERVICE_URL:http://localhost:8084}
           predicates:
@@ -84,6 +116,12 @@ petvacay:
 
 server:
   port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
 
 logging:
   level:

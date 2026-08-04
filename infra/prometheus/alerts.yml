@@ -1,0 +1,51 @@
+# Reglas de alerta de memoria. Prometheus las evalua solo cada
+# `evaluation_interval` (ver prometheus.yml) y, si una expresion es cierta
+# durante mas de `for`, dispara la alerta hacia Alertmanager.
+#
+# El `for` es deliberado en cada regla: sin el, un pico de un segundo (una
+# recoleccion de basura normal, un despliegue reiniciando un contenedor)
+# dispararia una alerta por algo que se resuelve solo. Exigir que la condicion
+# se mantenga varios minutos filtra el ruido y deja solo tendencias reales.
+
+groups:
+  - name: memoria
+    rules:
+      # Aviso temprano: da tiempo a mirarlo con calma antes de que sea
+      # cualquiera de las dos alertas criticas de abajo.
+      - alert: ContenedorCercaDelLimiteDeMemoria
+        expr: (container_memory_usage_bytes{name=~"petvacay-.+"} / container_spec_memory_limit_bytes{name=~"petvacay-.+"}) > 0.85
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: '{{ $labels.name }} usa más del 85% de su límite de memoria'
+          description: 'Lleva más de 2 minutos por encima del 85% de su mem_limit. Puede ser tráfico legítimo o una fuga — revisar antes de que llegue al 95%.'
+
+      # Umbral critico: el kernel puede matar el proceso en cualquier momento.
+      - alert: ContenedorMuyCercaDelLimiteDeMemoria
+        expr: (container_memory_usage_bytes{name=~"petvacay-.+"} / container_spec_memory_limit_bytes{name=~"petvacay-.+"}) > 0.95
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: '{{ $labels.name }} está a punto de ser matado por falta de memoria (OOM)'
+
+      # Vista mas fina: heap real de la JVM, no solo memoria total del
+      # contenedor (que incluye metaspace, hilos, memoria nativa...).
+      - alert: HeapJVMCercaDelMaximo
+        expr: (jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"}) > 0.85
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'El heap de {{ $labels.job }} lleva 2 minutos por encima del 85% de -Xmx'
+
+      # Confirmacion a posteriori: el kernel ya mato al proceso por memoria.
+      # Con `restart: unless-stopped` ya deberia haber vuelto solo, pero conviene
+      # saber que paso y por que.
+      - alert: ContenedorMatadoPorOOM
+        expr: increase(container_oom_events_total{name=~"petvacay-.+"}[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: '{{ $labels.name }} fue matado por el kernel por falta de memoria en los últimos 5 minutos'

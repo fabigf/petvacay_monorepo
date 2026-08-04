@@ -40,8 +40,8 @@ const emptyForm: AddPetRequest = {
 }
 
 /**
- * Ficha tecnica de las mascotas. Es obligatoria antes de reservar: el cuidador
- * decide en funcion de estos datos (negocio.md seccion 2.1).
+ * Ficha técnica de las mascotas. Es obligatoria antes de reservar: el cuidador
+ * decide en función de estos datos (negocio.md sección 2.1).
  */
 export function PetsPage() {
   const handleProblem = useProblemToast()
@@ -105,7 +105,7 @@ export function PetsPage() {
           </div>
         ) : pets.length === 0 ? (
           <EmptyState
-            title="Todavia no has registrado ninguna mascota"
+            title="Todavía no has registrado ninguna mascota"
             description="Necesitas al menos una ficha completa para poder reservar."
           />
         ) : (
@@ -120,7 +120,11 @@ export function PetsPage() {
                       {pet.breed ? ` · ${pet.breed}` : ''} · {pet.ageYears} años · {pet.weightKg} kg
                     </p>
                   </div>
-                  {pet.specialMedicalNeeds && <Badge tone="warning">Cuidados médicos</Badge>}
+                  {pet.specialMedicalNeeds && (
+                    <Badge tone="warning" className="shrink-0">
+                      Cuidados médicos
+                    </Badge>
+                  )}
                 </div>
 
                 <p className="text-sm text-slate-600">
@@ -180,7 +184,7 @@ export function PetsPage() {
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Edad (anos)" htmlFor="ageYears" error={fieldErrors.ageYears}>
+            <Field label="Edad (años)" htmlFor="ageYears" error={fieldErrors.ageYears}>
               <Input
                 id="ageYears"
                 type="number"
@@ -204,7 +208,7 @@ export function PetsPage() {
           <Field
             label="Necesidades médicas"
             htmlFor="medicalNeeds"
-            hint="Medicacion, alergias o tratamientos en curso."
+            hint="Medicación, alergias o tratamientos en curso."
             error={fieldErrors.medicalNeeds}
           >
             <Input

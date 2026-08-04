@@ -41,6 +41,27 @@ public class SettlementHandler {
         this.processedEvents = processedEvents;
     }
 
+    /**
+     * Se registra quien es cliente y quien cuidador en cuanto existe la reserva.
+     *
+     * <p>Tiene que ser aqui y no en {@link #onPagoConfirmado}: {@code preparePayment}
+     * exige conocer las partes ANTES de cobrar (para validar que quien paga es el
+     * cliente y no un tercero), mientras que {@code PagoConfirmadoEvent} solo se
+     * emite DESPUES del cobro. Aprender las partes unicamente en ese evento creaba
+     * un bloqueo mutuo: no se podia pagar porque no se conocian las partes, y no se
+     * conocian las partes porque no se habia pagado.
+     *
+     * <p>No pasa por el registro de idempotencia: la escritura va contra la clave
+     * primaria {@code bookingId}, asi que reprocesar el evento reescribe la misma
+     * fila con los mismos valores. Anotar el evento solo anadiria una fila inutil
+     * a la tabla de deduplicacion.
+     */
+    @Transactional
+    public void onReservaSolicitada(BookingEvents.ReservaSolicitadaEvent event) {
+        bookingParties.save(new BookingParties(event.bookingId(), event.clientId(), event.sitterId()));
+        log.debug("Partes registradas para la reserva {}", event.bookingId());
+    }
+
     /** El cliente ha pagado: el importe integro queda retenido en custodia. */
     @Transactional
     public void onPagoConfirmado(BookingEvents.PagoConfirmadoEvent event) {
@@ -48,9 +69,10 @@ public class SettlementHandler {
             return;
         }
 
-        // Se guarda quien es cliente y quien cuidador: es lo que permitira despues
-        // decidir quien tiene derecho a consultar este libro mayor, sin preguntar
-        // a booking-service en cada lectura.
+        // Reescritura defensiva: normalmente ya se registraron al solicitarse la
+        // reserva, pero si aquel evento se perdio esta es la ultima oportunidad de
+        // saber quien tiene derecho a consultar este libro mayor sin tener que
+        // preguntar a booking-service en cada lectura.
         bookingParties.save(new BookingParties(event.bookingId(), event.clientId(), event.sitterId()));
 
         ledger.append(LedgerEntry.of(event.bookingId(), LedgerEntryType.ESCROW_HOLD,

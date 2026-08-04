@@ -46,10 +46,14 @@ public class SearchApplicationService implements SearchSittersUseCase {
                 view.sitterId(),
                 view.firstName(),
                 view.rating(),
+                view.reviewCount(),
                 BigDecimal.valueOf(scored.distanceKm()).setScale(1, RoundingMode.HALF_UP).doubleValue(),
                 view.pricePerNight(),
                 view.currency(),
-                view.homeType());
+                view.homeType(),
+                view.photoUrl(),
+                view.acceptedSpecies(),
+                view.offeredServices());
     }
 
     private record ScoredView(SitterView view, double distanceKm) {

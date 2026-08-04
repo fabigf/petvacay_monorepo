@@ -1,0 +1,32 @@
+# Alertmanager decide QUE hacer con las alertas que Prometheus dispara:
+# agruparlas, esperar a ver si se resuelven solas, y avisar a alguien.
+#
+# TAL COMO ESTA, las alertas se ven en la UI de Alertmanager (puerto 9093,
+# accesible por tunel SSH — ver docker-compose.monitoring.yml) pero NO se
+# envian a ningun sitio: el receptor 'default' no tiene ninguna integracion
+# configurada. Es deliberado para no inventar un canal de aviso que nadie va a
+# mirar; añade aqui el que uses de verdad. Ejemplos:
+#
+# slack_configs:
+#   - api_url: 'https://hooks.slack.com/services/TU/WEBHOOK/AQUI'
+#     channel: '#alertas-petvacay'
+#
+# email_configs:
+#   - to: 'oncall@petvacay.test'
+#     from: 'alertmanager@petvacay.test'
+#     smarthost: 'smtp.tu-proveedor.com:587'
+#     auth_username: 'alertmanager@petvacay.test'
+#     auth_password: 'CAMBIAR'
+
+route:
+  receiver: default
+  group_by: ['alertname']
+  # Espera un poco por si llegan alertas relacionadas y las manda juntas, en
+  # vez de una notificacion por cada una.
+  group_wait: 30s
+  group_interval: 5m
+  # No repetir el mismo aviso constantemente mientras el problema persiste.
+  repeat_interval: 4h
+
+receivers:
+  - name: default

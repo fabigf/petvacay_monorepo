@@ -36,7 +36,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .cors(cors -> cors.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health/**").permitAll()
+                        // Solo alcanzable dentro de la red de Docker (el puerto no se
+                        // publica en produccion): exigir JWT aqui no anade seguridad real.
+                        .requestMatchers("/actuator/health/**", "/actuator/prometheus").permitAll()
 
                         // El webhook lo invoca Stripe, que no tiene sesion de
                         // usuario: no puede exigir JWT. Su autenticacion es la

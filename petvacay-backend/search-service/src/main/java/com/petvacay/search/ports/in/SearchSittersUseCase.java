@@ -1,11 +1,13 @@
 package com.petvacay.search.ports.in;
 
 import com.petvacay.identity.domain.model.HomeType;
+import com.petvacay.identity.domain.model.ServiceType;
 import com.petvacay.identity.domain.model.Species;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /** Lado de consulta del CQRS: alimenta el modulo `search` de React. */
@@ -38,9 +40,13 @@ public interface SearchSittersUseCase {
             UUID sitterId,
             String firstName,
             BigDecimal rating,
+            int reviewCount,
             double distanceKm,
             BigDecimal pricePerNight,
             String currency,
-            HomeType homeType) {
+            HomeType homeType,
+            String photoUrl,
+            Set<Species> acceptedSpecies,
+            Set<ServiceType> offeredServices) {
     }
 }

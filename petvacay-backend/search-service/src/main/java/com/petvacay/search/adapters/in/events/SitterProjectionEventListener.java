@@ -47,4 +47,9 @@ public class SitterProjectionEventListener {
     public void on(BookingEvents.ReservaFinalizadaEvent event) {
         handler.onReservaFinalizada(event);
     }
+
+    @EventListener
+    public void on(BookingEvents.ResenaCreadaEvent event) {
+        handler.onResenaCreada(event);
+    }
 }

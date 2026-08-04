@@ -5,6 +5,7 @@ import com.petvacay.identity.domain.model.GeoLocation;
 import com.petvacay.identity.domain.model.Pet;
 import com.petvacay.identity.domain.model.RefreshToken;
 import com.petvacay.identity.domain.model.Role;
+import com.petvacay.identity.domain.model.ServiceType;
 import com.petvacay.identity.domain.model.SitterProfile;
 import com.petvacay.identity.domain.model.UserAccount;
 import com.petvacay.identity.ports.in.IdentityUseCases.LoginUseCase;
@@ -29,11 +30,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -262,8 +266,8 @@ public class IdentityApplicationService
 
         SitterProfile profile = SitterProfile.create(command.sitterId(), command.description(),
                 command.homeType(), new GeoLocation(command.latitude(), command.longitude()),
-                new Money(command.pricePerNight(), Money.EUR), command.maxSimultaneousPets(),
-                command.acceptedSpecies(), command.maxPetWeightKg());
+                toMoneyMap(command.servicePrices()), command.maxSimultaneousPets(),
+                command.acceptedSpecies(), command.maxPetWeightKg(), command.photoUrl());
 
         return persist(profile);
     }
@@ -274,9 +278,18 @@ public class IdentityApplicationService
         SitterProfile profile = requireSitter(command.sitterId());
         profile.updatelisting(command.description(), command.homeType(),
                 new GeoLocation(command.latitude(), command.longitude()),
-                new Money(command.pricePerNight(), Money.EUR), command.maxSimultaneousPets(),
-                command.acceptedSpecies(), command.maxPetWeightKg(), clock.instant());
+                toMoneyMap(command.servicePrices()), command.maxSimultaneousPets(),
+                command.acceptedSpecies(), command.maxPetWeightKg(), command.photoUrl(), clock.instant());
         return persist(profile);
+    }
+
+    /** Todas las tarifas de un cuidador viajan en EUR, igual que el resto de la plataforma. */
+    private static Map<ServiceType, Money> toMoneyMap(Map<ServiceType, BigDecimal> prices) {
+        Map<ServiceType, Money> result = new EnumMap<>(ServiceType.class);
+        if (prices != null) {
+            prices.forEach((type, amount) -> result.put(type, new Money(amount, Money.EUR)));
+        }
+        return result;
     }
 
     @Override
@@ -348,11 +361,15 @@ public class IdentityApplicationService
         }
 
         String firstName = users.findById(profile.sitterId()).map(UserAccount::firstName).orElse("Cuidador");
+        Map<ServiceType, BigDecimal> servicePrices = new EnumMap<>(ServiceType.class);
+        profile.servicePrices().forEach((type, money) -> servicePrices.put(type, money.amount()));
+
         return new IdentityEvents.CuidadorIndexadoEvent(
                 UUID.randomUUID(), clock.instant(), profile.sitterId(), firstName, profile.homeType(),
                 profile.location().latitude(), profile.location().longitude(),
-                profile.pricePerNight().amount(), profile.pricePerNight().currency().getCurrencyCode(),
-                profile.maxSimultaneousPets(), profile.acceptedSpecies(), profile.maxPetWeightKg());
+                servicePrices, profile.minPrice().currency().getCurrencyCode(),
+                profile.maxSimultaneousPets(), profile.acceptedSpecies(), profile.maxPetWeightKg(),
+                profile.photoUrl());
     }
 
     private UserAccount requireUser(UUID userId) {

@@ -1,6 +1,7 @@
 package com.petvacay.search.adapters.out.mongo;
 
 import com.petvacay.identity.domain.model.HomeType;
+import com.petvacay.identity.domain.model.ServiceType;
 import com.petvacay.identity.domain.model.Species;
 import com.petvacay.search.domain.model.SitterView;
 import org.springframework.data.annotation.Id;
@@ -11,6 +12,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -33,7 +35,8 @@ public class SitterViewDocument {
     private UUID sitterId;
 
     private String firstName;
-    private BigDecimal rating;
+    /** Suma de todas las puntuaciones recibidas; el promedio se calcula al leer. */
+    private BigDecimal ratingSum = BigDecimal.ZERO;
     private int reviewCount;
     private BigDecimal pricePerNight;
     private String currency;
@@ -45,7 +48,9 @@ public class SitterViewDocument {
 
     private int maxSimultaneousPets;
     private Set<Species> acceptedSpecies = new HashSet<>();
+    private Set<ServiceType> offeredServices = new HashSet<>();
     private BigDecimal maxPetWeightKg;
+    private String photoUrl;
 
     /**
      * Mascotas comprometidas por noche. Las claves de un mapa de Mongo deben ser
@@ -60,25 +65,37 @@ public class SitterViewDocument {
     public static SitterViewDocument fromDomain(SitterView view) {
         SitterViewDocument document = new SitterViewDocument();
         document.applyCatalogData(view);
+        // Documento nuevo: sin resenas todavia, sea lo que sea lo que traiga el
+        // evento de catalogo (el handler siempre manda ZERO/0 aqui de todos
+        // modos — ver SitterProjectionHandler.onCuidadorIndexado).
+        document.ratingSum = BigDecimal.ZERO;
+        document.reviewCount = 0;
         document.occupancyByDate = new HashMap<>();
         view.occupancyByDate().forEach((date, count) ->
                 document.occupancyByDate.put(date.toString(), count));
         return document;
     }
 
-    /** Actualiza los datos de catalogo conservando la ocupacion ya registrada. */
+    /**
+     * Actualiza los datos de catalogo conservando la ocupacion ya registrada.
+     *
+     * <p>Deliberadamente NO toca {@code ratingSum} ni {@code reviewCount}: esos
+     * campos solo los muta {@code recordReview} con {@code $inc} atomico. Una
+     * reindexacion del catalogo (cambio de tarifa, descripcion...) no debe poder
+     * borrar el historial de resenas acumulado.
+     */
     public void applyCatalogData(SitterView view) {
         this.sitterId = view.sitterId();
         this.firstName = view.firstName();
-        this.rating = view.rating();
-        this.reviewCount = view.reviewCount();
         this.pricePerNight = view.pricePerNight();
         this.currency = view.currency();
         this.homeType = view.homeType();
         this.location = new GeoJsonPoint(view.longitude(), view.latitude());
         this.maxSimultaneousPets = view.maxSimultaneousPets();
         this.acceptedSpecies = new HashSet<>(view.acceptedSpecies());
+        this.offeredServices = new HashSet<>(view.offeredServices());
         this.maxPetWeightKg = view.maxPetWeightKg();
+        this.photoUrl = view.photoUrl();
     }
 
     public SitterView toDomain() {
@@ -89,6 +106,10 @@ public class SitterViewDocument {
                 occupancy.put(LocalDate.parse(date), count);
             }
         });
+
+        BigDecimal rating = reviewCount == 0
+                ? BigDecimal.ZERO
+                : ratingSum.divide(BigDecimal.valueOf(reviewCount), 1, RoundingMode.HALF_UP);
 
         return new SitterView(
                 sitterId,
@@ -102,7 +123,9 @@ public class SitterViewDocument {
                 location.getX(),
                 maxSimultaneousPets,
                 acceptedSpecies.isEmpty() ? EnumSet.noneOf(Species.class) : EnumSet.copyOf(acceptedSpecies),
+                offeredServices.isEmpty() ? EnumSet.noneOf(ServiceType.class) : EnumSet.copyOf(offeredServices),
                 maxPetWeightKg,
+                photoUrl,
                 occupancy);
     }
 

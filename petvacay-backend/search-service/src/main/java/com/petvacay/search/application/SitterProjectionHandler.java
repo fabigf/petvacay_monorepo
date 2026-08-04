@@ -9,6 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.HashMap;
 
 /**
@@ -46,19 +48,28 @@ public class SitterProjectionHandler {
     public void onCuidadorIndexado(IdentityEvents.CuidadorIndexadoEvent event) {
         SitterView existing = readModel.findById(event.sitterId()).orElse(null);
 
+        // El buscador muestra "desde X€": la tarifa mas barata del catalogo del
+        // cuidador, no un precio unico — un cuidador puede ofrecer varios
+        // servicios con tarifas distintas (negocio.md seccion 2).
+        BigDecimal startingPrice = event.servicePrices().values().stream()
+                .min(Comparator.naturalOrder())
+                .orElse(BigDecimal.ZERO);
+
         readModel.upsert(new SitterView(
                 event.sitterId(),
                 event.firstName(),
-                existing != null ? existing.rating() : java.math.BigDecimal.ZERO,
+                existing != null ? existing.rating() : BigDecimal.ZERO,
                 existing != null ? existing.reviewCount() : 0,
-                event.pricePerNight(),
+                startingPrice,
                 event.currency(),
                 event.homeType(),
                 event.latitude(),
                 event.longitude(),
                 event.maxSimultaneousPets(),
                 event.acceptedSpecies(),
+                event.servicePrices().keySet(),
                 event.maxPetWeightKg(),
+                event.photoUrl(),
                 existing != null ? new HashMap<>(existing.occupancyByDate()) : new HashMap<>()));
 
         log.info("Vista de busqueda indexada para el cuidador {}", event.sitterId());
@@ -87,5 +98,10 @@ public class SitterProjectionHandler {
 
     public void onReservaFinalizada(BookingEvents.ReservaFinalizadaEvent event) {
         readModel.releaseDates(event.sitterId(), event.dates().start(), event.dates().end(), event.petCount());
+    }
+
+    /** Una resena del cliente hacia el cuidador actualiza su reputacion publica. */
+    public void onResenaCreada(BookingEvents.ResenaCreadaEvent event) {
+        readModel.recordReview(event.sitterId(), event.rating());
     }
 }

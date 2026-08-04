@@ -22,6 +22,11 @@ public class SettlementEventListener {
     }
 
     @EventListener
+    public void on(BookingEvents.ReservaSolicitadaEvent event) {
+        handler.onReservaSolicitada(event);
+    }
+
+    @EventListener
     public void on(BookingEvents.PagoConfirmadoEvent event) {
         handler.onPagoConfirmado(event);
     }

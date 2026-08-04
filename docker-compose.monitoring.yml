@@ -1,0 +1,76 @@
+# Stack de observabilidad, opcional y separado del despliegue base:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#     -f docker-compose.monitoring.yml up -d
+#
+# Tres piezas:
+#   - cadvisor: expone en /metrics el uso REAL de memoria/CPU de cada
+#     contenedor (la misma fuente que `docker stats`), para que Prometheus lo
+#     guarde con el tiempo en vez de tener que mirarlo a mano.
+#   - prometheus: scrapea cadvisor + el /actuator/prometheus de los 5
+#     servicios Java cada 15s (ver infra/prometheus/prometheus.yml) y evalua
+#     las reglas de infra/prometheus/alerts.yml.
+#   - alertmanager: recibe las alertas que Prometheus dispara y decide a quien
+#     avisar (ver infra/alertmanager/alertmanager.yml — sin configurar todavia
+#     un canal real).
+#
+# Ningun puerto se publica al host a proposito, igual que el resto de servicios
+# internos en produccion (postgres, kafka, redis...): la UI de Prometheus no
+# lleva autenticacion propia, y publicar el 9090 directamente lo dejaria
+# abierto a quien sea. Para mirarla desde tu maquina, usa un tunel SSH:
+#
+#   ssh -L 9090:localhost:9090 -L 9093:localhost:9093 usuario@tu-servidor
+#
+# y abre http://localhost:9090 (Prometheus) o :9093 (Alertmanager) en local.
+# Si prefieres acceso directo por HTTPS con usuario/contrasena, la alternativa
+# es enrutarlo a traves de Nginx con `auth_basic`, no publicar el puerto tal cual.
+
+services:
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: petvacay-cadvisor
+    mem_limit: 128m
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: petvacay-prometheus
+    mem_limit: 512m
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - cadvisor
+    # Atado a 127.0.0.1: solo accesible desde esta maquina, nunca desde la red
+    # local ni desde fuera. En un servidor remoto, quita esto y usa un tunel
+    # SSH en su lugar (ver cabecera del fichero) — Prometheus no tiene login.
+    ports:
+      - '127.0.0.1:9090:9090'
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: petvacay-alertmanager
+    mem_limit: 128m
+    restart: unless-stopped
+    volumes:
+      - ./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    # 9094 en el host, no 9093: ese ya lo usa el listener EXTERNAL de Kafka
+    # (ver docker-compose.yml) para poder conectar herramientas locales sin
+    # pasar por Docker. Por dentro del contenedor Alertmanager sigue en 9093.
+    ports:
+      - '127.0.0.1:9094:9093'
+
+volumes:
+  prometheus-data:

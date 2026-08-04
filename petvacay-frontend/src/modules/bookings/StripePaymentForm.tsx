@@ -33,21 +33,49 @@ interface StripePaymentFormProps {
  */
 export function StripePaymentForm({ clientSecret, amountLabel, onSuccess }: StripePaymentFormProps) {
   if (!stripePromise) {
-    return (
-      <Card className="border-amber-200 bg-amber-50">
-        <p className="text-sm text-amber-800">
-          El pago con tarjeta no está configurado en este entorno. Define
-          <code className="mx-1 rounded bg-amber-100 px-1">VITE_STRIPE_PUBLISHABLE_KEY</code>
-          para habilitarlo.
-        </p>
-      </Card>
-    )
+    return <SimulatedCheckoutForm amountLabel={amountLabel} onSuccess={onSuccess} />
   }
 
   return (
     <Elements stripe={stripePromise} options={{ clientSecret, locale: 'es' }}>
       <CheckoutForm amountLabel={amountLabel} onSuccess={onSuccess} />
     </Elements>
+  )
+}
+
+/**
+ * Sustituto de {@link CheckoutForm} cuando no hay clave publicable de Stripe.
+ *
+ * <p>El backend ya corre por defecto contra {@code SimulatedPaymentGatewayAdapter}
+ * (petvacay.payments.provider=simulated): el {@code clientSecret} que llega aquí
+ * tiene la forma {@code pi_sim_..._secret_simulado}, nunca uno real de Stripe, así
+ * que aunque hubiera clave publicable el iframe de Stripe Elements no tendría
+ * nada válido con lo que montarse. En este entorno el cobro no lo confirma un
+ * banco: lo confirma este botón, llamando a la misma transición de estado
+ * (`POST /confirm-payment`) que en producción dispararía el webhook de Stripe.
+ */
+function SimulatedCheckoutForm({ amountLabel, onSuccess }: { amountLabel: string; onSuccess: () => void }) {
+  const [confirming, setConfirming] = useState(false)
+
+  const handleConfirm = () => {
+    setConfirming(true)
+    toast.success('Pago simulado aceptado', {
+      description: 'Estamos confirmando la reserva; puede tardar unos segundos.',
+    })
+    onSuccess()
+  }
+
+  return (
+    <Card className="border-amber-200 bg-amber-50">
+      <p className="text-sm text-amber-800">
+        No hay pasarela de pago real configurada en este entorno (falta
+        <code className="mx-1 rounded bg-amber-100 px-1">VITE_STRIPE_PUBLISHABLE_KEY</code>),
+        pero el backend simula el cobro para poder probar el flujo completo.
+      </p>
+      <Button className="mt-3" loading={confirming} onClick={handleConfirm}>
+        Confirmar pago simulado de {amountLabel}
+      </Button>
+    </Card>
   )
 }
 

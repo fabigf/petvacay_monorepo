@@ -3,8 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { createBooking } from './bookingsApi'
 import { listPets } from '@/modules/pets/petsApi'
-import type { Pet, ServiceType } from '@/core/api/types'
+import { getSitterProfile } from '@/modules/onboarding/onboardingApi'
+import { listReviewsForSitter } from '@/modules/reviews/reviewsApi'
+import type { Pet, Review, ServiceType, SitterProfile } from '@/core/api/types'
 import { Button, Card, EmptyState, Field, Input, Select, Skeleton } from '@/shared/components/ui'
+import { StarRating } from '@/shared/components/StarRating'
 import { useProblemToast } from '@/shared/hooks/useProblemToast'
 
 const serviceTypeLabels: Record<ServiceType, string> = {
@@ -27,9 +30,9 @@ function nightsBetween(start: string, end: string): number {
 /**
  * Formulario de solicitud de reserva.
  *
- * El importe que se muestra es una estimacion local orientativa: el precio
+ * El importe que se muestra es una estimación local orientativa: el precio
  * vinculante siempre lo calcula el dominio en el backend y llega en la respuesta
- * 201 (`finalAmountToPay`), nunca se envia desde el cliente.
+ * 201 (`finalAmountToPay`), nunca se envía desde el cliente.
  */
 export function NewBookingPage() {
   const { sitterId = '' } = useParams()
@@ -40,6 +43,9 @@ export function NewBookingPage() {
   const [loadingPets, setLoadingPets] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  const [sitter, setSitter] = useState<SitterProfile | null>(null)
+  const [reviews, setReviews] = useState<Review[]>([])
 
   const [selectedPets, setSelectedPets] = useState<string[]>([])
   const [startDate, setStartDate] = useState(todayPlus(7))
@@ -53,7 +59,33 @@ export function NewBookingPage() {
       .finally(() => setLoadingPets(false))
   }, [handleProblem])
 
+  // Mejor esfuerzo: si el cuidador o sus reseñas no cargan, el formulario de
+  // reserva sigue siendo utilizable — no es un requisito para poder reservar.
+  useEffect(() => {
+    if (!sitterId) return
+    getSitterProfile(sitterId).then(setSitter).catch(() => setSitter(null))
+    listReviewsForSitter(sitterId).then(setReviews).catch(() => setReviews([]))
+  }, [sitterId])
+
+  // El servicio por defecto tiene que ser uno que el cuidador ofrezca de
+  // verdad: no todos ofrecen los tres (negocio.md sección 2).
+  useEffect(() => {
+    if (!sitter) return
+    const offered = Object.keys(sitter.servicePrices) as ServiceType[]
+    if (offered.length > 0 && !offered.includes(serviceType)) {
+      setServiceType(offered[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sitter])
+
+  const averageRating = useMemo(() => {
+    if (reviews.length === 0) return 0
+    return reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+  }, [reviews])
+
   const nights = useMemo(() => nightsBetween(startDate, endDate), [startDate, endDate])
+  const offeredServices = (sitter ? Object.keys(sitter.servicePrices) : Object.keys(serviceTypeLabels)) as ServiceType[]
+  const selectedServicePrice = sitter?.servicePrices[serviceType]
 
   const togglePet = (petId: string) => {
     setSelectedPets((current) =>
@@ -92,7 +124,7 @@ export function NewBookingPage() {
     return (
       <EmptyState
         title="Necesitas registrar una mascota antes de reservar"
-        description="Ve a 'Mis mascotas' y completa su ficha tecnica."
+        description="Ve a 'Mis mascotas' y completa su ficha técnica."
       />
     )
   }
@@ -103,6 +135,49 @@ export function NewBookingPage() {
       <p className="mb-6 text-sm text-slate-500">
         El cuidador debe aceptar la propuesta antes de que se realice ningún cobro.
       </p>
+
+      {sitter && (
+        <Card className="mb-6">
+          <div className="flex items-start gap-4">
+            {sitter.photoUrl ? (
+              <img
+                src={sitter.photoUrl}
+                alt="Cuidador"
+                className="size-16 shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <div className="size-16 shrink-0 rounded-full bg-sand-100" />
+            )}
+            <div className="flex-1">
+              {reviews.length > 0 ? (
+                <div className="flex items-center gap-1.5">
+                  <StarRating value={averageRating} size="sm" />
+                  <span className="text-xs text-slate-500">
+                    {averageRating.toFixed(1)} ({reviews.length} {reviews.length === 1 ? 'reseña' : 'reseñas'})
+                  </span>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">Sin reseñas todavía</p>
+              )}
+              {sitter.description && <p className="mt-1 text-sm text-slate-600">{sitter.description}</p>}
+            </div>
+          </div>
+
+          {reviews.length > 0 && (
+            <div className="mt-4 flex flex-col gap-2 border-t border-sand-200 pt-4">
+              {reviews
+                .filter((r) => r.authorRole === 'CLIENT')
+                .slice(0, 5)
+                .map((review) => (
+                  <div key={review.reviewId} className="text-sm">
+                    <StarRating value={review.rating} size="sm" />
+                    {review.comment && <p className="mt-0.5 text-slate-600">{review.comment}</p>}
+                  </div>
+                ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       <Card>
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
@@ -161,15 +236,25 @@ export function NewBookingPage() {
             </Field>
           </div>
 
-          <Field label="Tipo de servicio" htmlFor="serviceType" error={fieldErrors.serviceType}>
+          <Field
+            label="Tipo de servicio"
+            htmlFor="serviceType"
+            error={fieldErrors.serviceType}
+            hint={
+              offeredServices.length < Object.keys(serviceTypeLabels).length
+                ? 'Solo se muestran los servicios que ofrece este cuidador.'
+                : undefined
+            }
+          >
             <Select
               id="serviceType"
               value={serviceType}
               onChange={(e) => setServiceType(e.target.value as ServiceType)}
             >
-              {Object.entries(serviceTypeLabels).map(([value, label]) => (
+              {offeredServices.map((value) => (
                 <option key={value} value={value}>
-                  {label}
+                  {serviceTypeLabels[value]}
+                  {sitter ? ` — ${sitter.servicePrices[value]?.toFixed(2)} €` : ''}
                 </option>
               ))}
             </Select>
@@ -180,6 +265,12 @@ export function NewBookingPage() {
               <strong>{nights}</strong> {nights === 1 ? 'noche' : 'noches'} ·{' '}
               <strong>{selectedPets.length}</strong>{' '}
               {selectedPets.length === 1 ? 'mascota' : 'mascotas'}
+              {selectedServicePrice !== undefined && (
+                <>
+                  {' '}
+                  · <strong>{(selectedServicePrice * Math.max(nights, 1)).toFixed(2)} €</strong> estimado
+                </>
+              )}
             </p>
             <p className="mt-1 text-xs text-slate-500">
               Al importe del servicio se añade una tasa de gestión del 5%. El importe definitivo lo

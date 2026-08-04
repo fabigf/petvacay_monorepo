@@ -26,6 +26,11 @@ public class SettlementKafkaListener {
         this.objectMapper = objectMapper;
     }
 
+    @KafkaListener(topics = BookingEvents.ReservaSolicitadaEvent.TOPIC, groupId = GROUP_ID)
+    public void onReservaSolicitada(String payload) throws Exception {
+        handler.onReservaSolicitada(objectMapper.readValue(payload, BookingEvents.ReservaSolicitadaEvent.class));
+    }
+
     @KafkaListener(topics = BookingEvents.PagoConfirmadoEvent.TOPIC, groupId = GROUP_ID)
     public void onPagoConfirmado(String payload) throws Exception {
         handler.onPagoConfirmado(objectMapper.readValue(payload, BookingEvents.PagoConfirmadoEvent.class));

@@ -32,8 +32,8 @@ export function RegisterPage() {
       const profile = await register(form)
 
       // El registro solo crea la cuenta; el token lo emite el login. Se encadena
-      // aqui para que el usuario no tenga que volver a escribir sus credenciales
-      // recien creadas, pero son dos operaciones distintas a proposito: crear una
+      // aquí para que el usuario no tenga que volver a escribir sus credenciales
+      // recién creadas, pero son dos operaciones distintas a propósito: crear una
       // cuenta y obtener credenciales de acceso no son lo mismo.
       const session = await loginRequest({ email: form.email, password: form.password })
       login({
@@ -78,7 +78,7 @@ export function RegisterPage() {
             </Field>
           </div>
 
-          <Field label="Correo electronico" htmlFor="email" error={fieldErrors.email}>
+          <Field label="Correo electrónico" htmlFor="email" error={fieldErrors.email}>
             <Input
               id="email"
               type="email"
@@ -90,9 +90,9 @@ export function RegisterPage() {
           </Field>
 
           <Field
-            label="Contrasena"
+            label="Contraseña"
             htmlFor="password"
-            hint="Minimo 8 caracteres."
+            hint="Mínimo 8 caracteres."
             error={fieldErrors.password}
           >
             <Input
@@ -109,7 +109,7 @@ export function RegisterPage() {
           <Field
             label="Fecha de nacimiento"
             htmlFor="birthDate"
-            hint="Para ofrecer servicios de cuidado es obligatorio ser mayor de 18 anos."
+            hint="Para ofrecer servicios de cuidado es obligatorio ser mayor de 18 años."
             error={fieldErrors.birthDate}
           >
             <Input
@@ -142,7 +142,7 @@ export function RegisterPage() {
           </Button>
 
           <p className="text-center text-sm text-slate-500">
-            Ya tienes cuenta?{' '}
+            ¿Ya tienes cuenta?{' '}
             <Link to="/login" className="font-medium text-brand-700 hover:underline">
               Entrar
             </Link>

@@ -41,7 +41,12 @@ public class SecurityConfig {
                         // no el token de acceso: por eso no exigen autenticacion.
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login",
                                 "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
-                        .requestMatchers("/actuator/health/**").permitAll()
+                        // /actuator/prometheus no viaja por el Gateway ni sale del host (el
+                        // puerto del servicio no se publica en produccion): solo lo alcanza
+                        // Prometheus, en la red interna de Docker. Exigir un JWT ahi no
+                        // añadiria seguridad real y le pide a Prometheus manejar credenciales
+                        // por algo que ningun navegador puede alcanzar.
+                        .requestMatchers("/actuator/health/**", "/actuator/prometheus").permitAll()
 
                         // Contrato interno servicio-a-servicio: requiere token valido
                         // (booking-service propaga el del usuario), pero ningun rol

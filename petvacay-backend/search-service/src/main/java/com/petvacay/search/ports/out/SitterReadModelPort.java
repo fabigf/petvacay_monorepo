@@ -56,4 +56,11 @@ public interface SitterReadModelPort {
 
     /** Libera la ocupacion previamente bloqueada (cancelacion o finalizacion). */
     void releaseDates(UUID sitterId, LocalDate start, LocalDate end, int petCount);
+
+    /**
+     * Registra una nueva resena en el agregado del cuidador (suma y contador,
+     * ambos con {@code $inc} atomico — mismo motivo que blockDates/releaseDates:
+     * varias resenas pueden llegar por Kafka casi a la vez).
+     */
+    void recordReview(UUID sitterId, int rating);
 }

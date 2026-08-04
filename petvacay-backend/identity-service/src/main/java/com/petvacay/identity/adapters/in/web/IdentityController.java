@@ -10,6 +10,7 @@ import com.petvacay.identity.adapters.in.web.IdentityDtos.RejectSitterRequest;
 import com.petvacay.identity.adapters.in.web.IdentityDtos.SitterProfileResponse;
 import com.petvacay.identity.adapters.in.web.IdentityDtos.SubmitDocumentRequest;
 import com.petvacay.identity.adapters.in.web.IdentityDtos.UserResponse;
+import com.petvacay.identity.domain.model.ServiceType;
 import com.petvacay.identity.ports.in.IdentityUseCases.LoginUseCase;
 import com.petvacay.identity.ports.in.IdentityUseCases.ManagePetsUseCase;
 import com.petvacay.identity.ports.in.IdentityUseCases.QueryUserUseCase;
@@ -35,7 +36,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -164,8 +168,8 @@ public class IdentityController {
         SitterProfileResponse response = SitterProfileResponse.from(sitterOnboarding.createProfile(
                 new SitterOnboardingUseCase.CreateSitterProfileCommand(sitterId, request.description(),
                         request.homeType(), request.latitude(), request.longitude(),
-                        request.pricePerNight(), request.maxSimultaneousPets(),
-                        request.acceptedSpecies(), request.maxPetWeightKg())));
+                        request.servicePrices(), request.maxSimultaneousPets(),
+                        request.acceptedSpecies(), request.maxPetWeightKg(), request.photoUrl())));
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -180,13 +184,19 @@ public class IdentityController {
         return SitterProfileResponse.from(sitterOnboarding.updateProfile(
                 new SitterOnboardingUseCase.UpdateSitterProfileCommand(sitterId, request.description(),
                         request.homeType(), request.latitude(), request.longitude(),
-                        request.pricePerNight(), request.maxSimultaneousPets(),
-                        request.acceptedSpecies(), request.maxPetWeightKg())));
+                        request.servicePrices(), request.maxSimultaneousPets(),
+                        request.acceptedSpecies(), request.maxPetWeightKg(), request.photoUrl())));
     }
 
+    /**
+     * Vista publica del perfil de un cuidador. Lleva el nombre porque la consumen
+     * pantallas donde el cuidador es "el otro" (solicitar reserva, detalle de una
+     * reserva) y hay que poder identificarlo.
+     */
     @GetMapping("/sitters/{sitterId}/profile")
     public SitterProfileResponse getProfile(@PathVariable UUID sitterId) {
-        return SitterProfileResponse.from(sitterOnboarding.getProfile(sitterId));
+        return SitterProfileResponse.from(sitterOnboarding.getProfile(sitterId),
+                queryUser.getById(sitterId).firstName());
     }
 
     /**
@@ -203,17 +213,19 @@ public class IdentityController {
     public SitterSummaryResponse summary(@PathVariable UUID sitterId) {
         var profile = sitterOnboarding.getProfile(sitterId);
         String firstName = queryUser.getById(sitterId).firstName();
+
+        Map<ServiceType, BigDecimal> servicePrices = new EnumMap<>(ServiceType.class);
+        profile.servicePrices().forEach((type, money) -> servicePrices.put(type, money.amount()));
+
         return new SitterSummaryResponse(profile.sitterId(), firstName, profile.isSearchable(),
-                profile.pricePerNight().amount(), profile.pricePerNight().currency().getCurrencyCode(),
-                profile.maxSimultaneousPets());
+                servicePrices, profile.maxSimultaneousPets());
     }
 
     public record SitterSummaryResponse(
             UUID sitterId,
             String firstName,
             boolean verified,
-            java.math.BigDecimal pricePerNight,
-            String currency,
+            Map<ServiceType, BigDecimal> servicePrices,
             int maxSimultaneousPets) {
     }
 

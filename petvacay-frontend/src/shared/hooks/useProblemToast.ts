@@ -9,11 +9,11 @@ interface HandledProblem {
 }
 
 /**
- * Estrategia de renderizado de errores de especificaciones.md seccion 4:
+ * Estrategia de renderizado de errores de especificaciones.md sección 4:
  *
  * - 400: no se lanza toast, se devuelven los errores por campo para pintarlos
  *   en rojo junto a cada input.
- * - 409 y demas errores de negocio: se muestra `detail` en un toast sin romper
+ * - 409 y demás errores de negocio: se muestra `detail` en un toast sin romper
  *   el flujo de la pantalla.
  */
 export function useProblemToast() {

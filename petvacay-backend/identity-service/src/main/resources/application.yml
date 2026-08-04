@@ -13,6 +13,16 @@ server:
   error:
     include-message: never
 
+management:
+  endpoints:
+    web:
+      exposure:
+        # Solo health (ya usado por el healthcheck de Docker) y prometheus
+        # (metricas para Grafana). El resto de endpoints de Actuator (env,
+        # beans, heapdump...) se quedan cerrados: filtrar caso por caso da
+        # menos sorpresas que abrir todo y confiar en Spring Security.
+        include: health,prometheus
+
 petvacay:
   messaging:
     # Transporte de eventos: spring (bus interno, solo util en solitario, Fase 1-3)

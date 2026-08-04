@@ -3,6 +3,7 @@ package com.petvacay.identity.adapters.in.web;
 import com.petvacay.identity.domain.model.HomeType;
 import com.petvacay.identity.domain.model.Pet;
 import com.petvacay.identity.domain.model.Role;
+import com.petvacay.identity.domain.model.ServiceType;
 import com.petvacay.identity.domain.model.SitterProfile;
 import com.petvacay.identity.domain.model.Sociability;
 import com.petvacay.identity.domain.model.Species;
@@ -12,6 +13,7 @@ import com.petvacay.identity.ports.in.IdentityUseCases.LoginUseCase;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Positive;
@@ -20,6 +22,8 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -102,10 +106,12 @@ public final class IdentityDtos {
             @NotNull(message = "El tipo de vivienda es obligatorio") HomeType homeType,
             double latitude,
             double longitude,
-            @NotNull @Positive(message = "La tarifa por noche debe ser mayor que cero") BigDecimal pricePerNight,
+            @NotEmpty(message = "Debes ofrecer al menos un servicio con su tarifa")
+            Map<ServiceType, @Positive(message = "La tarifa debe ser mayor que cero") BigDecimal> servicePrices,
             @Min(value = 1, message = "La capacidad mínima es 1 mascota") int maxSimultaneousPets,
             Set<Species> acceptedSpecies,
-            BigDecimal maxPetWeightKg) {
+            BigDecimal maxPetWeightKg,
+            @Size(max = 2000) String photoUrl) {
     }
 
     public record SubmitDocumentRequest(
@@ -115,20 +121,39 @@ public final class IdentityDtos {
     public record RejectSitterRequest(@NotBlank(message = "El motivo es obligatorio") String reason) {
     }
 
+    /**
+     * Perfil del cuidador.
+     *
+     * <p>{@code firstName} no vive en el agregado {@code SitterProfile} sino en
+     * {@code UserAccount}, asi que solo viene relleno cuando quien construye la
+     * respuesta tiene a mano la cuenta: en las vistas publicas del perfil, donde
+     * hace falta poder decir de quien es. En las respuestas que devuelven las
+     * operaciones sobre el propio perfil (alta, edicion, aprobacion) llega nulo,
+     * porque quien las recibe ya sabe de quien esta hablando y no justifica una
+     * consulta extra a la tabla de usuarios.
+     */
     public record SitterProfileResponse(
-            UUID sitterId, String description, HomeType homeType, double latitude, double longitude,
-            BigDecimal pricePerNight, String currency, int maxSimultaneousPets,
-            Set<Species> acceptedSpecies, BigDecimal maxPetWeightKg,
+            UUID sitterId, String firstName, String description, HomeType homeType,
+            double latitude, double longitude,
+            Map<ServiceType, BigDecimal> servicePrices, String currency, int maxSimultaneousPets,
+            Set<Species> acceptedSpecies, BigDecimal maxPetWeightKg, String photoUrl,
             VerificationStatus verificationStatus, boolean searchable,
             String rejectionReason, Instant verifiedAt) {
 
         public static SitterProfileResponse from(SitterProfile profile) {
+            return from(profile, null);
+        }
+
+        public static SitterProfileResponse from(SitterProfile profile, String firstName) {
+            Map<ServiceType, BigDecimal> servicePrices = new EnumMap<>(ServiceType.class);
+            profile.servicePrices().forEach((type, money) -> servicePrices.put(type, money.amount()));
+
             return new SitterProfileResponse(
-                    profile.sitterId(), profile.description(), profile.homeType(),
+                    profile.sitterId(), firstName, profile.description(), profile.homeType(),
                     profile.location().latitude(), profile.location().longitude(),
-                    profile.pricePerNight().amount(), profile.pricePerNight().currency().getCurrencyCode(),
+                    servicePrices, profile.minPrice().currency().getCurrencyCode(),
                     profile.maxSimultaneousPets(), profile.acceptedSpecies(), profile.maxPetWeightKg(),
-                    profile.verificationStatus(), profile.isSearchable(),
+                    profile.photoUrl(), profile.verificationStatus(), profile.isSearchable(),
                     profile.rejectionReason(), profile.verifiedAt());
         }
     }

@@ -3,10 +3,16 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { acceptBooking, listBookings, rejectBooking } from './bookingsApi'
 import { BookingStatusBadge } from './BookingStatusBadge'
-import type { BookingDetail } from '@/core/api/types'
+import type { BookingDetail, ServiceType } from '@/core/api/types'
 import { Button, Card, EmptyState, Skeleton } from '@/shared/components/ui'
 import { useAuthStore } from '@/core/security/authStore'
 import { useProblemToast } from '@/shared/hooks/useProblemToast'
+
+const serviceTypeLabels: Record<ServiceType, string> = {
+  NIGHT_ACCOMMODATION: 'Alojamiento nocturno',
+  DAY_CARE: 'Guardería de día',
+  WALKING: 'Paseos por horas',
+}
 
 type Perspective = 'client' | 'sitter'
 
@@ -15,7 +21,10 @@ export function DashboardPage() {
   const handleProblem = useProblemToast()
   const isSitter = useAuthStore((state) => state.hasRole('ROLE_SITTER'))
 
-  const [perspective, setPerspective] = useState<Perspective>('client')
+  // Todo cuidador es tambien cliente (no existe el rol "solo cuidador"), pero
+  // si alguien tiene el rol de cuidador lo mas probable es que entre aqui a
+  // gestionar sus solicitudes, no a mirar sus propias reservas como cliente.
+  const [perspective, setPerspective] = useState<Perspective>(isSitter ? 'sitter' : 'client')
   const [bookings, setBookings] = useState<BookingDetail[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -88,12 +97,12 @@ export function DashboardPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {bookings.map((booking) => (
-            <Card key={booking.bookingId} className="flex flex-wrap items-center gap-4">
-              <div className="min-w-52 flex-1">
-                <div className="mb-1 flex items-center gap-2">
+            <Card key={booking.bookingId} className="flex flex-wrap items-center gap-x-6 gap-y-4">
+              <div className="min-w-56 flex-1">
+                <div className="mb-1.5 flex items-center gap-2">
                   <BookingStatusBadge status={booking.status} />
-                  <span className="text-xs text-slate-400">
-                    #{booking.bookingId.slice(0, 8)}
+                  <span className="text-sm font-semibold text-slate-800">
+                    {serviceTypeLabels[booking.serviceType]}
                   </span>
                 </div>
                 <p className="text-sm text-slate-700">
@@ -101,9 +110,14 @@ export function DashboardPage() {
                   {booking.nights === 1 ? 'noche' : 'noches'} · {booking.petIds.length}{' '}
                   {booking.petIds.length === 1 ? 'mascota' : 'mascotas'}
                 </p>
+                <p className="mt-1 font-mono text-xs text-slate-400">
+                  Id: {booking.bookingId.slice(0, 8)}
+                </p>
               </div>
 
-              <div className="text-right">
+              {/* Ancho fijo para que la columna de importes quede alineada entre
+                  tarjetas en lugar de bailar segun la longitud de cada cifra. */}
+              <div className="w-28 shrink-0 text-right">
                 <p className="text-xs text-slate-500">
                   {perspective === 'sitter' ? 'Recibirás' : 'Total'}
                 </p>
@@ -116,7 +130,7 @@ export function DashboardPage() {
                 </p>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex shrink-0 gap-2">
                 {perspective === 'sitter' && booking.status === 'SOLICITADO' && (
                   <>
                     <Button onClick={() => void respond(booking.bookingId, 'accept')}>

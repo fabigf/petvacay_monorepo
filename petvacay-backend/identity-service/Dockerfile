@@ -28,4 +28,20 @@ COPY --from=build /build/identity-service/target/*.jar app.jar
 USER petvacay
 
 EXPOSE 8082
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+
+# Por defecto, sin -Xmx la JVM se reserva hasta el 25% de la RAM que ve el
+# host (no del contenedor si no hay mem_limit) — con varias JVMs en la misma
+# maquina eso puede agotar la memoria de todas a la vez. Heap explicito y
+# predecible en su lugar, ajustable via JAVA_OPTS sin reconstruir la imagen.
+#
+# -XX:+ExitOnOutOfMemoryError: si el heap se agota, el proceso muere ya
+# (Docker lo reinicia via restart policy) en vez de quedar semivivo con GC
+# machacando CPU sin liberar nada, que es peor que un reinicio limpio.
+# -Xlog:gc: dejar rastro en los logs de cuanto heap se usa en cada GC, para
+# poder ver la tendencia ANTES de que llegue a agotarse, no solo el aviso final.
+ENV JAVA_OPTS="-Xms256m -Xmx384m \
+  -XX:+ExitOnOutOfMemoryError \
+  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp/identity-service.hprof \
+  -Xlog:gc:stdout:time,uptime,level,tags"
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

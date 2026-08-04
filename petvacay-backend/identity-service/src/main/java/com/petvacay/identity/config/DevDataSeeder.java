@@ -1,6 +1,7 @@
 package com.petvacay.identity.config;
 
 import com.petvacay.identity.domain.model.HomeType;
+import com.petvacay.identity.domain.model.ServiceType;
 import com.petvacay.identity.domain.model.Sociability;
 import com.petvacay.identity.domain.model.Species;
 import com.petvacay.identity.domain.model.UserAccount;
@@ -17,7 +18,9 @@ import org.springframework.context.annotation.Configuration;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -47,29 +50,45 @@ public class DevDataSeeder {
         return args -> {
             UUID lucia = seedClient(registerUser, managePets);
 
+            // Ofrece alojamiento y paseos, cada uno con su propia tarifa.
             seedSitter(registerUser, onboarding, verification, "carlos.ruiz@petvacay.test", "Carlos", "Ruiz",
                     "Casa con jardín vallado en Chamberí. 8 años cuidando perros de todos los tamaños.",
-                    HomeType.HOUSE_GARDEN, 40.4378, -3.7038, "25.00", 3,
-                    EnumSet.of(Species.DOG, Species.CAT), "40.00", true);
+                    HomeType.HOUSE_GARDEN, 40.4378, -3.7038,
+                    servicePrices(ServiceType.NIGHT_ACCOMMODATION, "25.00", ServiceType.WALKING, "12.00"),
+                    3, EnumSet.of(Species.DOG, Species.CAT), "40.00", true);
 
+            // Solo guarderia de dia: no todos los cuidadores ofrecen los tres servicios.
             seedSitter(registerUser, onboarding, verification, "marta.lopez@petvacay.test", "Marta", "Lopez",
                     "Apartamento tranquilo cerca del Retiro, ideal para gatos y perros pequeños.",
-                    HomeType.APARTMENT, 40.4153, -3.6844, "18.50", 2,
-                    EnumSet.of(Species.CAT, Species.RABBIT, Species.DOG), "10.00", true);
+                    HomeType.APARTMENT, 40.4153, -3.6844,
+                    servicePrices(ServiceType.DAY_CARE, "18.50"),
+                    2, EnumSet.of(Species.CAT, Species.RABBIT, Species.DOG), "10.00", true);
 
+            // Los tres servicios: el sitio grande da para todo.
             seedSitter(registerUser, onboarding, verification, "javier.moreno@petvacay.test", "Javier", "Moreno",
                     "Finca rural a 20 minutos del centro con 2000 m2 para correr.",
-                    HomeType.RURAL_HOUSE, 40.5100, -3.6500, "32.00", 5,
-                    EnumSet.allOf(Species.class), null, true);
+                    HomeType.RURAL_HOUSE, 40.5100, -3.6500,
+                    servicePrices(ServiceType.NIGHT_ACCOMMODATION, "32.00",
+                            ServiceType.DAY_CARE, "22.00", ServiceType.WALKING, "14.00"),
+                    5, EnumSet.allOf(Species.class), null, true);
 
             // Cuidadora aun pendiente de KYC: no debe aparecer en el buscador
             seedSitter(registerUser, onboarding, verification, "elena.pending@petvacay.test", "Elena", "Vidal",
                     "Perfil recién creado, pendiente de verificación de identidad.",
-                    HomeType.APARTMENT, 40.4200, -3.7000, "20.00", 2,
-                    EnumSet.of(Species.DOG), "15.00", false);
+                    HomeType.APARTMENT, 40.4200, -3.7000,
+                    servicePrices(ServiceType.NIGHT_ACCOMMODATION, "20.00"),
+                    2, EnumSet.of(Species.DOG), "15.00", false);
 
             log.info("Datos de desarrollo cargados. Cliente de pruebas (X-User-Id): {}", lucia);
         };
+    }
+
+    private static Map<ServiceType, BigDecimal> servicePrices(Object... typeAndPrice) {
+        Map<ServiceType, BigDecimal> prices = new EnumMap<>(ServiceType.class);
+        for (int i = 0; i < typeAndPrice.length; i += 2) {
+            prices.put((ServiceType) typeAndPrice[i], new BigDecimal((String) typeAndPrice[i + 1]));
+        }
+        return prices;
     }
 
     private UUID seedClient(RegisterUserUseCase registerUser, ManagePetsUseCase managePets) {
@@ -92,15 +111,16 @@ public class DevDataSeeder {
     private void seedSitter(RegisterUserUseCase registerUser, SitterOnboardingUseCase onboarding,
                             SitterVerificationUseCase verification, String email, String firstName,
                             String lastName, String description, HomeType homeType, double lat, double lng,
-                            String pricePerNight, int maxPets, Set<Species> species, String maxWeight,
-                            boolean approve) {
+                            Map<ServiceType, BigDecimal> servicePrices, int maxPets, Set<Species> species,
+                            String maxWeight, boolean approve) {
 
         UserAccount sitter = registerUser.register(new RegisterUserUseCase.RegisterUserCommand(
                 email, "password123", firstName, lastName, LocalDate.of(1988, 3, 22), true));
 
         onboarding.createProfile(new SitterOnboardingUseCase.CreateSitterProfileCommand(
-                sitter.id(), description, homeType, lat, lng, new BigDecimal(pricePerNight), maxPets,
-                species, maxWeight == null ? null : new BigDecimal(maxWeight)));
+                sitter.id(), description, homeType, lat, lng, servicePrices, maxPets,
+                species, maxWeight == null ? null : new BigDecimal(maxWeight),
+                "https://i.pravatar.cc/400?u=" + email));
 
         onboarding.submitIdentityDocument(sitter.id(), "s3://petvacay-kyc/" + sitter.id() + "/dni.jpg");
 

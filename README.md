@@ -217,6 +217,38 @@ La sincronizacion es por eventos de dominio:
 | `PagoConfirmadoEvent` | booking-service | Bloqueo de las noches reservadas |
 | `ReservaCanceladaEvent` / `ReservaFinalizadaEvent` | booking-service | Liberacion de las noches |
 
+### Geolocalizacion y geocodificacion
+
+Hasta esta fase, el punto desde el que se media la distancia en el buscador
+estaba fijo en el centro de Madrid — el filtro por radio funcionaba, pero
+medido siempre desde el mismo sitio sin importar quien buscara. Se resolvio en
+dos capas, ninguna excluyente de la otra:
+
+1. **Geolocalizacion del navegador** (`navigator.geolocation`), pedida en
+   silencio al cargar `SearchPage`: si el usuario concede el permiso, el radio
+   se mide desde su ubicacion real. La busqueda inicial **no espera** a esta
+   respuesta — se lanza primero con Madrid por defecto para no dejar la
+   pantalla vacia mientras el navegador pide permiso, y se repite en cuanto la
+   geolocalizacion resuelve (o se queda como estaba si el usuario la deniega).
+2. **Un campo de direccion o codigo postal**, para el caso que la
+   geolocalizacion no cubre — alguien buscando cuidador en una ciudad donde no
+   esta ("me voy a Barcelona, quiero ver quien hay alli"). Geocodifica contra
+   `GET /api/v1/search/geocode` (nuevo endpoint de `search-service`), que a su
+   vez llama a **Nominatim** (OpenStreetMap): gratuito y sin alta, coherente
+   con el mismo criterio que el adaptador `simulated` de Stripe — nadie deberia
+   necesitar una cuenta de pago para arrancar el proyecto.
+
+**Limite real documentado en el codigo, no solo aqui:** la politica de uso de
+Nominatim exige un maximo de **1 peticion/segundo en total**, no por cliente.
+El Gateway le pone a esta ruta un `RequestRateLimiter` mucho mas estricto que
+al resto del buscador (1/s, rafaga 2 — ver `search-geocode` en
+`gateway-service/application.yml`), pero **por IP**, no de forma global: con
+muchos usuarios concurrentes el conjunto podria seguir superando el limite de
+Nominatim. Para produccion con trafico real, sustituir por un proveedor de
+pago (Google/Mapbox) o una instancia propia de Nominatim autoalojada — el
+cambio queda contenido en `NominatimGeocodingAdapter`, el resto del sistema
+solo conoce el puerto `GeocodingPort`.
+
 ---
 
 ## Eventos de dominio sobre Apache Kafka
@@ -434,10 +466,21 @@ peticion.
   coste de seguridad; el coste es acordarse de actualizar las dos al rotarla. En
   produccion ambas se inyectan desde la misma fuente externa y la duplicacion
   desaparece.
-- **`X-Forwarded-For` es falsificable por el cliente.** El rate limiting lo lee
-  para no agrupar a todos los usuarios detras de un proxy bajo un mismo limite;
-  en produccion el proxy de entrada debe **sobrescribir** esa cabecera en lugar
-  de dejar pasar la que venga.
+- **HTTPS no esta configurado.** `nginx.conf` solo escucha en el puerto 80. Sin
+  TLS, la cookie `Secure` del refresh token nunca la envia el navegador y la
+  sesion no sobrevive a un refresco de pagina — hay que decidir entre Certbot o
+  un balanceador/CDN gestionado antes de un despliegue real (detalle en
+  [TODO.md](TODO.md)).
+
+### Cerrado en la auditoria final
+
+- **`X-Forwarded-For` ya no es falsificable en el borde.** El rate limiting lo
+  lee para no agrupar a todos los usuarios detras de un proxy bajo un mismo
+  limite; `nginx.conf` ahora la sobrescribe con `$remote_addr` (la IP de la
+  conexion TCP real) en vez de concatenarla con `$proxy_add_x_forwarded_for`,
+  que dejaba pasar lo que el cliente quisiera anteponer.
+- **CORS del Gateway dejo de estar fijo a `localhost`.** Ahora es configurable
+  por `PETVACAY_CORS_ALLOWED_ORIGINS`, documentado en `.env.example`.
 
 ---
 
@@ -510,10 +553,59 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 Diferencias respecto a desarrollo, todas deliberadas: el frontend se sirve como
 estaticos por Nginx en lugar del servidor de Vite; **ningun servicio publica su
-puerto al host** salvo el Gateway, de modo que Postgres, Mongo, Kafka y Redis
-dejan de ser alcanzables desde fuera; y todos los secretos vienen del entorno,
-sin valores por defecto — el compose falla al arrancar si falta alguno, que es
-mejor que arrancar con la contrasena de ejemplo.
+puerto al host**, ni siquiera el Gateway — solo Nginx (`:80`), que hace de proxy
+de `/api` hacia el; y todos los secretos vienen del entorno, sin valores por
+defecto — el compose falla al arrancar si falta alguno, que es mejor que
+arrancar con la contrasena de ejemplo. Variables documentadas, una a una, en
+[`.env.example`](.env.example).
+
+Cada servicio lleva ademas `mem_limit` explicito y `restart: unless-stopped`.
+Sin `mem_limit`, una JVM (o el cache de WiredTiger de Mongo) se dimensiona segun
+la RAM que ve del **host**, no la que Docker le va a dejar usar de verdad — con
+varios servicios en la misma maquina eso es la receta para que el OOM killer
+del kernel mate al proceso equivocado bajo carga real. Las 5 JVMs (Gateway + 4
+servicios) arrancan ademas con heap explicito (`-Xms256m -Xmx384m`) y
+`-XX:+ExitOnOutOfMemoryError`: si el heap se agota, el proceso muere limpio (con
+volcado en `/tmp/*.hprof`) en vez de degradarse a base de pausas de GC sin
+liberar nada — `restart: unless-stopped` lo levanta de nuevo solo.
+
+**Sigue pendiente**: HTTPS (ver "Limitaciones que siguen abiertas" mas arriba),
+base de datos gestionada con backups, y decidir si este compose de un solo host
+basta o hace falta un orquestador multi-maquina para tolerancia real a fallos.
+Detalle completo en [TODO.md](TODO.md).
+
+---
+
+## Observabilidad
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+  -f docker-compose.monitoring.yml up -d
+```
+
+Fichero separado y opcional (`docker-compose.monitoring.yml`) porque no es
+parte del sistema en si, es infraestructura para vigilarlo. Tres piezas:
+
+| Servicio | Que hace |
+|---|---|
+| **cAdvisor** | Expone memoria/CPU real de cada contenedor (via cgroups) en formato Prometheus |
+| **Prometheus** | Scrapea cAdvisor + `/actuator/prometheus` de los 5 servicios Java cada 15s; evalua las reglas de `infra/prometheus/alerts.yml` |
+| **Alertmanager** | Recibe las alertas que Prometheus dispara y decide a quien avisar |
+
+Cuatro reglas de alerta, todas sobre memoria (el problema concreto que motivo
+montar esto): dos por `mem_limit` del contenedor (aviso al 85%, critico al
+95%), una por heap de JVM al 85% de `-Xmx`, y una que confirma a posteriori si
+el kernel mato un contenedor por falta de memoria.
+
+Ningun puerto se publica salvo a `127.0.0.1` (Prometheus `:9090`, Alertmanager
+`:9094` — el `9093` lo ocupa ya el listener externo de Kafka): la UI de
+Prometheus no tiene autenticacion propia, asi que solo es accesible desde la
+propia maquina. En un servidor remoto, sustituir por un tunel SSH o enrutarlo a
+traves de Nginx con `auth_basic`.
+
+**Pendiente**: `infra/alertmanager/alertmanager.yml` no tiene ningun receptor
+real configurado todavia (ni Slack ni email) — las alertas se ven en la UI pero
+no avisan a nadie proactivamente. Ver [TODO.md](TODO.md).
 
 ---
 
@@ -580,6 +672,68 @@ recibe solicitudes** hasta que un administrador lo aprueba. La aprobacion
 publica `CuidadorIndexadoEvent`, que es lo que materializa su vista de busqueda
 en `search-service`.
 
+### Resenas cruzadas e inmutables
+
+Uno de los tres pilares de negocio (`negocio.md`: "reputacion auditable...
+sistema de resenas cruzadas inmutables"). Vive en `booking-service`, no en
+`identity-service`: una resena es un hecho sobre una reserva concreta, no
+sobre el perfil del cuidador — el agregado correcto es `Review`, ligado a
+`Booking`, no a `SitterProfile`.
+
+Reglas, todas en `ReviewApplicationService`:
+
+- Solo se puede valorar una reserva **una vez `FINALIZADO`** el servicio.
+- **Una resena por reserva y por rol**: el cliente valora al cuidador, el
+  cuidador valora al cliente, cada uno como maximo una vez (restriccion unica
+  en base de datos, `uq_review_booking_role`).
+- Inmutable: no existe endpoint para editarla ni borrarla.
+- Solo la resena del **cliente hacia el cuidador** dispara `ResenaCreadaEvent`
+  hacia Kafka: es la unica direccion con vitrina publica (el buscador). La del
+  cuidador hacia el cliente se guarda igual, pero no tiene ningun modelo de
+  lectura que la consuma todavia.
+
+`search-service` ya tenia `rating`/`reviewCount` en `SitterView` desde la Fase
+2 — el campo llevaba ahi esperando desde el principio, simplemente nada lo
+alimentaba. `SitterViewDocument` guarda `ratingSum` (no la media) y aplica
+`$inc` atomico en cada resena, exactamente el mismo patron que ya resolvia el
+bloqueo de calendario: varias resenas pueden llegar por Kafka casi a la vez, y
+un `$inc` es atomico frente a eso mientras que un "leer, sumar, escribir" no lo
+seria. La media se calcula al leer, no al escribir.
+
+### Catalogo de servicios: una tarifa por servicio, no una unica tarifa
+
+`negocio.md` seccion 2 es explicito: el cuidador "define sus propios servicios
+(Alojamiento nocturno, Guarderia de dia, Paseos por horas)... configura de
+forma autonoma sus tarifas". Hasta esta fase `SitterProfile` solo tenia
+`pricePerNight`, una unica tarifa que se aplicaba sin importar que
+`serviceType` pidiera la reserva — un gap real frente al propio documento de
+negocio, no una funcionalidad nueva inventada.
+
+`SitterProfile.servicePrices` es ahora un `Map<ServiceType, Money>`: el
+cuidador ofrece los servicios que quiere, cada uno con su propia tarifa, y
+puede no ofrecer los otros dos. Tres consecuencias en cadena, cada una en el
+servicio que le corresponde:
+
+- **`identity-service`**: valida que el catalogo no este vacio y que cada
+  tarifa sea positiva (`ERR_SITTER_NO_SERVICES`, `ERR_SITTER_INVALID_PRICE`).
+  Persistido con `@ElementCollection` sobre una tabla propia
+  (`sitter_service_prices`), mismo patron que ya usaba `acceptedSpecies`.
+- **`booking-service`**: `SitterCatalogPort.SitterSummary.servicePrices` ya no
+  es un precio unico, es el mapa completo. Si el `serviceType` de la reserva no
+  esta en el catalogo del cuidador, la creacion falla con
+  `409 ERR_SERVICE_NOT_OFFERED` — antes de esta fase, cualquier `serviceType`
+  se aceptaba y tarificaba igual, lo cual era incorrecto por definicion.
+- **`search-service`**: el buscador mostraba (y sigue mostrando) un unico
+  precio por tarjeta. Ahora es el **minimo** del catalogo del cuidador ("desde
+  X€"), calculado en `SitterProjectionHandler` a partir del mapa que trae
+  `CuidadorIndexadoEvent`.
+
+Migracion de datos: `V4__sitter_service_prices.sql` traduce la tarifa unica de
+cada cuidador ya existente como `NIGHT_ACCOMMODATION` — es el unico servicio
+que el sistema soportaba hasta ahora, asi que ningun perfil se queda sin
+catalogo tras el despliegue. Verificado contra un cuidador migrado en Docker:
+su tarifa unica de antes aparece intacta como su unico servicio ofrecido.
+
 ---
 
 ## API
@@ -599,9 +753,12 @@ Todas las rutas cuelgan de `/api/v1` y se consumen a traves del Gateway
 | `POST` | `/admin/sitters/{id}/approve` · `/reject` | identity |
 | `GET` | `/internal/sitters/{id}/summary` | identity (solo booking-service, no via Gateway) |
 | `GET` | `/search/sitters` | search |
+| `GET` | `/search/geocode` | search (proxy a Nominatim; rate limit propio, mas estricto) |
 | `POST` | `/bookings` | booking |
 | `GET` | `/bookings` · `/bookings/{id}` | booking |
 | `POST` | `/bookings/{id}/accept` · `/reject` · `/confirm-payment` · `/start` · `/complete` · `/cancel` · `/disputes` | booking |
+| `POST` `GET` | `/bookings/{id}/reviews` | booking |
+| `GET` | `/reviews/sitters/{id}` | booking (publico: vitrina de reputacion) |
 | `GET` | `/payments/bookings/{id}/ledger` | payment |
 
 ### Autenticacion
@@ -664,7 +821,7 @@ inmediata:
 ## Tests
 
 ```bash
-cd petvacay-backend && mvn test     # 44 tests, los 6 modulos
+cd petvacay-backend && mvn test     # 46 tests, los 6 modulos
 ```
 
 - `PricingPolicyTest`, `BookingLifecycleTest`, `CancellationPolicyTest`
@@ -689,11 +846,16 @@ cd petvacay-backend && mvn test     # 44 tests, los 6 modulos
 - `PaymentIdempotencyTest` (payment-service) — tres entregas del mismo evento
   producen un unico apunte, eventos distintos se registran ambos, y la pasarela
   devuelve el mismo intento ante la misma clave de idempotencia.
+- `GeocodingApplicationServiceTest` (search-service) — unitario y sin contexto
+  de Spring: la traduccion entre lo que devuelve `GeocodingPort` y el caso de
+  uso, tanto cuando encuentra una direccion como cuando no encuentra nada.
 
-`search-service` y `gateway-service` no tienen tests dedicados: su logica no
-trivial se hereda del codigo ya probado en fases anteriores, y lo que cambio en
-la Fase 4 fueron los limites de proceso, verificados manualmente contra el
-sistema real.
+`gateway-service` no tiene tests dedicados: su logica no trivial se hereda del
+codigo ya probado en fases anteriores, y lo que cambio en la Fase 4 fueron los
+limites de proceso, verificados manualmente contra el sistema real. El resto de
+`search-service` (la busqueda por radio en si) tampoco tiene test dedicado por
+el mismo motivo — depende de MongoDB real, y se verifico manualmente contra el
+sistema en Docker (ver mas abajo).
 
 ### Verificacion manual contra el sistema en ejecucion
 
@@ -750,6 +912,20 @@ Y tras el endurecimiento y la Fase 6:
   visibles en Redis.
 - El webhook de Stripe con una firma falsificada devuelve `400`; sin secreto
   configurado devuelve `503` y descarta el evento en lugar de aceptarlo.
+- `GET /api/v1/search/geocode` contra Nominatim real (no un simulador): "Puerta
+  del Sol, Madrid" y "Sagrada Familia, Barcelona" devuelven coordenadas
+  correctas a traves del Gateway; una direccion inexistente devuelve `404`; y
+  la quinta peticion seguida a la misma IP devuelve `429` — el rate limit
+  dedicado de esta ruta (1/s, rafaga 2) funciona por separado del resto del
+  buscador.
+- Dos resenas reales creadas con `POST /bookings/{id}/reviews` contra una
+  reserva finalizada: el rating de un cuidador paso de `0` a `5.0` (1 resena) en
+  el buscador, confirmando que el evento llega por Kafka y el `$inc` atomico
+  funciona.
+- Catalogo de servicios: un cuidador migrado desde la tarifa unica conserva su
+  precio intacto como `NIGHT_ACCOMMODATION`; pedirle `WALKING` (que no ofrece)
+  devuelve `409 ERR_SERVICE_NOT_OFFERED`; pedirle el servicio que si ofrece
+  crea la reserva con el precio correcto.
 
 ---
 
@@ -764,6 +940,9 @@ Y tras el endurecimiento y la Fase 6:
 | 5 · Seguridad JWT | **Hecha** | RS256, BCrypt, autorizacion por rol y por propiedad; `X-User-Id` retirada |
 | 5b · Endurecimiento | **Hecha** | Refresh rotatorio con deteccion de reuso, cookie HttpOnly, rate limiting, ledger por propietario |
 | 6 · Stripe Connect + despliegue | **Hecha** | Stripe Elements, webhook con firma, idempotencia, compose de produccion |
+| 6b · Auditoria final + observabilidad | **Hecha** | CORS y `X-Forwarded-For` corregidos, `.env.example`, limites de memoria y heap de JVM explicitos, Prometheus + cAdvisor + Alertmanager |
+| 6c · Geolocalizacion, resenas y perfil | **Hecha** | Geolocalizacion real + geocodificacion (Nominatim), sistema de resenas cruzadas con rating agregado en el buscador, foto de perfil, edicion de perfil expuesta en el frontend |
+| 6d · Catalogo de servicios por cuidador | **Hecha** | Cada cuidador ofrece los servicios que quiere con su propia tarifa (`negocio.md` seccion 2), en vez de una unica tarifa para los tres; migracion de datos existentes incluida |
 
 ### Nota sobre `package-lock.json`
 

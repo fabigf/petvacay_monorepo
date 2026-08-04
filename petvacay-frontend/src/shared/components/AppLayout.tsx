@@ -51,7 +51,7 @@ export function AppLayout() {
             )}
             {isSitter && (
               <NavLink to="/dashboard/sitter" className={navLinkClass}>
-                Panel cuidador
+                Mi perfil de cuidador
               </NavLink>
             )}
           </nav>
@@ -84,11 +84,11 @@ export function AppLayout() {
 
       <footer className="border-t border-sand-200 bg-white py-6">
         <p className="mx-auto max-w-6xl px-4 text-xs text-slate-500">
-          PetVacay · Fase 1 — monolito modular con arquitectura hexagonal y CQRS interno.
+          PetVacay · Microservicios con arquitectura hexagonal, CQRS y mensajería por eventos.
         </p>
       </footer>
 
-      {/* Toasts de errores de negocio (409) segun especificaciones.md 4 */}
+      {/* Toasts de errores de negocio (409) según especificaciones.md 4 */}
       <Toaster richColors position="top-right" />
     </div>
   )

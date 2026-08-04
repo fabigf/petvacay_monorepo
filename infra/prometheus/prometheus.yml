@@ -1,0 +1,53 @@
+# Configuracion de Prometheus para PetVacay.
+#
+# Prometheus funciona por "scrape" (pull): cada `scrape_interval` visita el
+# `metrics_path` de cada target y guarda lo que devuelva. Nadie le empuja datos
+# a el.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  # Metricas de contenedor (memoria/CPU reales segun el kernel, via cgroups):
+  # la misma fuente que ya mirabamos a mano con `docker stats`.
+  - job_name: cadvisor
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # Metricas de JVM (heap, GC, pools de conexion...) que expone cada servicio
+  # via Micrometer en /actuator/prometheus. Mas finas que cAdvisor: cAdvisor ve
+  # "este contenedor usa 340MB", Micrometer ve "de esos 340MB, 210 son heap y
+  # llevan subiendo desde hace 10 minutos".
+  - job_name: identity-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['identity-service:8082']
+
+  - job_name: booking-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['booking-service:8083']
+
+  - job_name: search-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['search-service:8084']
+
+  - job_name: payment-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['payment-service:8085']
+
+  - job_name: gateway-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['gateway-service:8080']

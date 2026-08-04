@@ -7,10 +7,10 @@ import { Button, Card, Field, Input } from '@/shared/components/ui'
 import { useProblemToast } from '@/shared/hooks/useProblemToast'
 
 /**
- * Inicio de sesion con email y contrasena (Fase 5).
+ * Inicio de sesión con email y contraseña (Fase 5).
  *
- * <p>Sustituye al formulario provisional de las Fases 1-4, que pedia pegar a mano
- * el UUID del usuario porque todavia no habia autenticacion real. Ahora
+ * <p>Sustituye al formulario provisional de las Fases 1-4, que pedía pegar a mano
+ * el UUID del usuario porque todavía no había autenticación real. Ahora
  * `POST /auth/login` valida las credenciales contra BCrypt y devuelve un JWT
  * firmado en RS256.
  */
@@ -54,7 +54,7 @@ export function LoginPage() {
       <h1 className="mb-6 text-2xl font-bold text-slate-800">Entrar</h1>
       <Card>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Field label="Correo electronico" htmlFor="email" error={fieldErrors.email}>
+          <Field label="Correo electrónico" htmlFor="email" error={fieldErrors.email}>
             <Input
               id="email"
               type="email"
@@ -66,7 +66,7 @@ export function LoginPage() {
             />
           </Field>
 
-          <Field label="Contrasena" htmlFor="password" error={fieldErrors.password}>
+          <Field label="Contraseña" htmlFor="password" error={fieldErrors.password}>
             <Input
               id="password"
               type="password"
@@ -83,7 +83,7 @@ export function LoginPage() {
           </Button>
 
           <p className="text-center text-sm text-slate-500">
-            No tienes cuenta?{' '}
+            ¿No tienes cuenta?{' '}
             <Link to="/register" className="font-medium text-brand-700 hover:underline">
               Crear una
             </Link>

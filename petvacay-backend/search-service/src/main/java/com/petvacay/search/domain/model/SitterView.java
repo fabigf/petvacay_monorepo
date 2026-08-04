@@ -1,6 +1,7 @@
 package com.petvacay.search.domain.model;
 
 import com.petvacay.identity.domain.model.HomeType;
+import com.petvacay.identity.domain.model.ServiceType;
 import com.petvacay.identity.domain.model.Species;
 
 import java.math.BigDecimal;
@@ -30,7 +31,9 @@ public record SitterView(
         double longitude,
         int maxSimultaneousPets,
         Set<Species> acceptedSpecies,
+        Set<ServiceType> offeredServices,
         BigDecimal maxPetWeightKg,
+        String photoUrl,
         Map<LocalDate, Integer> occupancyByDate) {
 
     /** Capacidad libre para todas las noches del rango [start, end). */

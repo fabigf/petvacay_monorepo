@@ -4,7 +4,7 @@ import type { ProblemDetails } from './types'
 /**
  * Normaliza cualquier fallo de Axios al formato RFC 7807, de modo que la UI
  * tenga siempre un `title`, un `detail` y un `code` con los que decidir
- * (especificaciones.md seccion 4).
+ * (especificaciones.md sección 4).
  */
 export function toProblemDetails(error: unknown): ProblemDetails {
   if (error instanceof AxiosError) {
@@ -14,10 +14,10 @@ export function toProblemDetails(error: unknown): ProblemDetails {
     }
     if (error.code === 'ECONNABORTED' || !error.response) {
       return {
-        title: 'Sin conexion con el servidor',
+        title: 'Sin conexión con el servidor',
         status: 0,
         detail:
-          'No hemos podido contactar con PetVacay. Comprueba tu conexion e intentalo de nuevo.',
+          'No hemos podido contactar con PetVacay. Comprueba tu conexión e inténtalo de nuevo.',
         code: 'ERR_NETWORK',
       }
     }

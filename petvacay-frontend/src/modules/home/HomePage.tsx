@@ -4,15 +4,15 @@ import { Button, Card } from '@/shared/components/ui'
 const pillars = [
   {
     title: 'Identidad verificada',
-    body: 'Ningun cuidador aparece en el buscador hasta que un administrador valida su documento de identidad.',
+    body: 'Ningún cuidador aparece en el buscador hasta que un administrador valida su documento de identidad.',
   },
   {
     title: 'Pago en custodia',
-    body: 'El dinero queda retenido en escrow y solo se libera 24 horas despues de terminar el servicio sin incidencias.',
+    body: 'El dinero queda retenido en escrow y solo se libera 24 horas después de terminar el servicio sin incidencias.',
   },
   {
-    title: 'Reputacion auditable',
-    body: 'Resenas cruzadas inmutables que premian el buen servicio y penalizan las cancelaciones del cuidador.',
+    title: 'Reputación auditable',
+    body: 'Reseñas cruzadas inmutables que premian el buen servicio y penalizan las cancelaciones del cuidador.',
   },
 ]
 
@@ -51,9 +51,9 @@ export function HomePage() {
         <ol className="grid gap-4 sm:grid-cols-4">
           {[
             'Busca cuidadores disponibles cerca de ti para tus fechas.',
-            'Envia la solicitud: el cuidador tiene 24 horas para responder.',
+            'Envía la solicitud: el cuidador tiene 24 horas para responder.',
             'Paga de forma segura; el importe queda retenido en custodia.',
-            'Al terminar el servicio se libera el pago y dejais resena.',
+            'Al terminar el servicio se libera el pago y dejáis reseña.',
           ].map((step, index) => (
             <li key={step} className="rounded-xl border border-sand-200 bg-white p-4">
               <span className="mb-2 inline-flex size-7 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">

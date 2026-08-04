@@ -14,6 +14,12 @@ server:
   error:
     include-message: never
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+
 petvacay:
   messaging:
     # Transporte de entrada: spring (bus interno, solo util en solitario) | kafka
@@ -24,6 +30,13 @@ petvacay:
     # Vacia el indice al arrancar para no arrastrar datos de sesiones anteriores.
     # Deshabilitado por defecto: solo se activa explicitamente en desarrollo.
     enabled: false
+  geocoding:
+    # Nominatim (OpenStreetMap): gratuito, sin API key. Ver el javadoc de
+    # NominatimGeocodingAdapter para el limite de uso antes de produccion real.
+    base-url: ${PETVACAY_GEOCODING_BASE_URL:https://nominatim.openstreetmap.org}
+    # Nominatim RECHAZA peticiones sin un User-Agent identificable. En
+    # produccion, cambiar el contacto de ejemplo por uno real.
+    user-agent: ${PETVACAY_GEOCODING_USER_AGENT:PetVacay/1.0 (contacto@petvacay.test)}
 
 logging:
   level:

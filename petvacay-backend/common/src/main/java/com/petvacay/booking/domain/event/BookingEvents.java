@@ -145,4 +145,33 @@ public final class BookingEvents {
             return bookingId;
         }
     }
+
+    /**
+     * Una parte valoro la reserva finalizada (negocio.md: "resenas cruzadas
+     * inmutables"). Solo se publica cuando el autor es el CLIENTE: es la unica
+     * direccion que afecta a la reputacion publica del cuidador en el buscador.
+     * Una resena del cuidador hacia el cliente se guarda igual en booking-service,
+     * pero no tiene ningun modelo de lectura que la consuma todavia, asi que no
+     * dispara evento — nada estaria escuchando.
+     */
+    public record ResenaCreadaEvent(
+            UUID eventId,
+            Instant occurredAt,
+            UUID bookingId,
+            UUID reviewId,
+            UUID sitterId,
+            int rating) implements DomainEvent {
+
+        public static final String TOPIC = "petvacay.booking.resena-creada";
+
+        @Override
+        public String eventName() {
+            return TOPIC;
+        }
+
+        @Override
+        public UUID aggregateId() {
+            return bookingId;
+        }
+    }
 }

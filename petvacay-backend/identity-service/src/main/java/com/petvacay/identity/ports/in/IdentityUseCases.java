@@ -2,6 +2,7 @@ package com.petvacay.identity.ports.in;
 
 import com.petvacay.identity.domain.model.HomeType;
 import com.petvacay.identity.domain.model.Pet;
+import com.petvacay.identity.domain.model.ServiceType;
 import com.petvacay.identity.domain.model.SitterProfile;
 import com.petvacay.identity.domain.model.Sociability;
 import com.petvacay.identity.domain.model.Species;
@@ -10,6 +11,7 @@ import com.petvacay.identity.domain.model.UserAccount;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -112,10 +114,11 @@ public final class IdentityUseCases {
                 HomeType homeType,
                 double latitude,
                 double longitude,
-                BigDecimal pricePerNight,
+                Map<ServiceType, BigDecimal> servicePrices,
                 int maxSimultaneousPets,
                 Set<Species> acceptedSpecies,
-                BigDecimal maxPetWeightKg) {
+                BigDecimal maxPetWeightKg,
+                String photoUrl) {
         }
 
         record UpdateSitterProfileCommand(
@@ -124,10 +127,11 @@ public final class IdentityUseCases {
                 HomeType homeType,
                 double latitude,
                 double longitude,
-                BigDecimal pricePerNight,
+                Map<ServiceType, BigDecimal> servicePrices,
                 int maxSimultaneousPets,
                 Set<Species> acceptedSpecies,
-                BigDecimal maxPetWeightKg) {
+                BigDecimal maxPetWeightKg,
+                String photoUrl) {
         }
     }
 

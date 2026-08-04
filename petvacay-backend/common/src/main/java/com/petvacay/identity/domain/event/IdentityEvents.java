@@ -1,11 +1,13 @@
 package com.petvacay.identity.domain.event;
 
 import com.petvacay.identity.domain.model.HomeType;
+import com.petvacay.identity.domain.model.ServiceType;
 import com.petvacay.identity.domain.model.Species;
 import com.petvacay.shared.domain.DomainEvent;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -99,11 +101,12 @@ public final class IdentityEvents {
             HomeType homeType,
             double latitude,
             double longitude,
-            BigDecimal pricePerNight,
+            Map<ServiceType, BigDecimal> servicePrices,
             String currency,
             int maxSimultaneousPets,
             Set<Species> acceptedSpecies,
-            BigDecimal maxPetWeightKg) implements DomainEvent {
+            BigDecimal maxPetWeightKg,
+            String photoUrl) implements DomainEvent {
 
         public static final String TOPIC = "petvacay.identity.cuidador-indexado";
 

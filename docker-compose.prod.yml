@@ -12,32 +12,64 @@
 # Antes de usarlo en serio hay que definir en el fichero .env:
 #   POSTGRES_PASSWORD, MONGO_PASSWORD, PETVACAY_ADMIN_PASSWORD,
 #   PETVACAY_JWT_PRIVATE_KEY_LOCATION, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
+#
+# Memoria: cada servicio lleva `mem_limit` explicito. Sin el, una JVM (o el
+# cache de WiredTiger de Mongo) se dimensiona segun la RAM que ve del HOST, no
+# la que Docker le va a dejar usar de verdad — con varios servicios en la misma
+# maquina eso es una receta para que el OOM killer del kernel mate al proceso
+# equivocado bajo carga. Los valores parten de uso medido en reposo
+# (`docker stats`) mas margen para trafico real; si escalas la maquina, ajusta
+# estos numeros a la vez que el tamano de la instancia, no por separado.
+# `restart: unless-stopped` en todos: si el kernel mata un proceso por memoria,
+# que vuelva solo en vez de quedarse caido silenciosamente.
 
 services:
   postgres-db:
     ports: !override []
+    mem_limit: 512m
+    restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD}
 
   mongodb:
     ports: !override []
+    mem_limit: 512m
+    restart: unless-stopped
+    # El cache de WiredTiger por defecto se lleva el 50% de la RAM que Mongo ve
+    # del host, no del limite del contenedor: sin fijarlo, en un host grande
+    # podria pedir mas de lo que mem_limit le va a permitir usar de verdad.
+    command: ['mongod', '--wiredTigerCacheSizeGB', '0.25']
     environment:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?define MONGO_PASSWORD}
 
   kafka:
     ports: !override []
+    mem_limit: 1200m
+    restart: unless-stopped
     environment:
       # Sin listener externo: en produccion nadie habla con Kafka desde fuera.
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://kafka:9093
+      # Igual que las JVMs de los servicios: heap explicito en vez de que la
+      # JVM de Kafka se autodimensione segun la RAM visible del host.
+      KAFKA_HEAP_OPTS: '-Xms512m -Xmx512m'
 
   redis:
     ports: !override []
+    mem_limit: 128m
+    restart: unless-stopped
+    # Sin maxmemory, Redis sigue aceptando escrituras hasta que el kernel lo
+    # mata por memoria (falla duro, sin aviso). Con maxmemory + LRU, cuando se
+    # llena empieza a descartar claves antiguas — aceptable aqui porque solo
+    # guarda contadores de rate limiting, datos efimeros por diseno.
+    command: ['redis-server', '--maxmemory', '100mb', '--maxmemory-policy', 'allkeys-lru']
 
   # Las claves se montan desde el host: ni la privada ni la publica viajan
   # dentro de las imagenes. Los cuatro servicios y el Gateway necesitan la
   # publica para verificar; solo identity-service tiene la privada para firmar.
   identity-service:
     ports: !override []
+    mem_limit: 512m
+    restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PETVACAY_JWT_PRIVATE_KEY_LOCATION: ${PETVACAY_JWT_PRIVATE_KEY_LOCATION:?define la ruta de la clave privada}
@@ -51,6 +83,8 @@ services:
 
   booking-service:
     ports: !override []
+    mem_limit: 512m
+    restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PETVACAY_JWT_PUBLIC_KEY_LOCATION: ${PETVACAY_JWT_PUBLIC_KEY_LOCATION}
@@ -59,14 +93,19 @@ services:
 
   search-service:
     ports: !override []
+    mem_limit: 512m
+    restart: unless-stopped
     environment:
       MONGODB_URI: mongodb://petvacay:${MONGO_PASSWORD}@mongodb:27017/petvacay_search?authSource=admin
       PETVACAY_JWT_PUBLIC_KEY_LOCATION: ${PETVACAY_JWT_PUBLIC_KEY_LOCATION}
+      PETVACAY_GEOCODING_USER_AGENT: ${PETVACAY_GEOCODING_USER_AGENT:-PetVacay/1.0 (contacto@petvacay.test)}
     volumes:
       - ${JWT_KEYS_DIR:-./infra/keys}:/run/secrets/keys:ro
 
   payment-service:
     ports: !override []
+    mem_limit: 512m
+    restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       PETVACAY_JWT_PUBLIC_KEY_LOCATION: ${PETVACAY_JWT_PUBLIC_KEY_LOCATION}
@@ -81,6 +120,8 @@ services:
     # que sirve el frontend y hace de proxy de /api hacia aqui. Un solo punto de
     # entrada significa un solo sitio donde terminar TLS y aplicar cabeceras.
     ports: !override []
+    mem_limit: 512m
+    restart: unless-stopped
     environment:
       PETVACAY_JWT_PUBLIC_KEY_LOCATION: ${PETVACAY_JWT_PUBLIC_KEY_LOCATION}
       PETVACAY_CORS_ALLOWED_ORIGINS: ${PETVACAY_CORS_ALLOWED_ORIGINS:?define los dominios del frontend}
@@ -93,6 +134,8 @@ services:
       - ${JWT_KEYS_DIR:-./infra/keys}:/run/secrets/keys:ro
 
   petvacay-frontend:
+    mem_limit: 64m
+    restart: unless-stopped
     build:
       target: production
       args:

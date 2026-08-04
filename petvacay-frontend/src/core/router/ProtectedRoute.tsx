@@ -9,24 +9,24 @@ interface ProtectedRouteProps {
   roles?: Role[]
   /**
    * Exige que el cuidador haya superado el KYC (especificaciones.md 2.2).
-   * Sin esto, un cuidador pendiente de verificacion accederia a pantallas que
+   * Sin esto, un cuidador pendiente de verificación accedería a pantallas que
    * dan por hecho un perfil ya publicado en el buscador.
    */
   requireVerifiedSitter?: boolean
 }
 
 /**
- * Wrapper de rutas protegidas (especificaciones.md seccion 2.2).
+ * Wrapper de rutas protegidas (especificaciones.md sección 2.2).
  *
- * <p>Evalua roles y estado de verificación antes de renderizar la vista y
+ * <p>Evalúa roles y estado de verificación antes de renderizar la vista y
  * redirige a `/login` conservando el destino original. Desde la Fase 5 los datos
- * que evalua provienen de un JWT firmado, no de un estado local que el usuario
+ * que evalúa provienen de un JWT firmado, no de un estado local que el usuario
  * pudiera manipular.
  *
- * <p>Aun asi, esto **no es un control de seguridad**: cualquiera puede editar el
- * estado del navegador y forzar el render de una pantalla. Es una decision de
+ * <p>Aun así, esto **no es un control de seguridad**: cualquiera puede editar el
+ * estado del navegador y forzar el render de una pantalla. Es una decisión de
  * experiencia de usuario — no mostrar vistas que no van a funcionar. La
- * autorizacion real la aplica el backend en cada peticion, que es el unico sitio
+ * autorización real la aplica el backend en cada petición, que es el único sitio
  * donde puede aplicarse de verdad.
  */
 export function ProtectedRoute({ children, roles, requireVerifiedSitter }: ProtectedRouteProps) {
@@ -43,7 +43,7 @@ export function ProtectedRoute({ children, roles, requireVerifiedSitter }: Prote
     return <Navigate to="/dashboard" replace />
   }
 
-  // El cuidador existe y tiene el rol, pero aun no ha superado el KYC: se le deja
+  // El cuidador existe y tiene el rol, pero aún no ha superado el KYC: se le deja
   // en su panel de onboarding en lugar de expulsarlo al dashboard de cliente.
   if (requireVerifiedSitter && !sitterVerified) {
     return <Navigate to="/dashboard/sitter" replace />

@@ -13,6 +13,12 @@ server:
   error:
     include-message: never
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+
 petvacay:
   scheduler:
     # Frecuencia del barrido de solicitudes caducadas (24h sin respuesta del cuidador)

@@ -13,6 +13,12 @@ server:
   error:
     include-message: never
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+
 petvacay:
   messaging:
     # payment-service solo consume eventos de reserva, nunca publica los suyos.

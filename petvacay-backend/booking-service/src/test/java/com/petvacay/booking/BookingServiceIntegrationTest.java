@@ -2,6 +2,7 @@ package com.petvacay.booking;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.petvacay.booking.domain.model.ServiceType;
 import com.petvacay.booking.ports.out.SitterCatalogPort;
 import com.petvacay.shared.domain.Money;
 import org.junit.jupiter.api.BeforeEach;
@@ -385,7 +386,7 @@ class BookingServiceIntegrationTest {
 
         void register(UUID sitterId, String firstName, boolean verified, String pricePerNight, int maxPets) {
             sitters.put(sitterId, new SitterSummary(sitterId, firstName, verified,
-                    Money.eur(pricePerNight), maxPets));
+                    Map.of(ServiceType.NIGHT_ACCOMMODATION, Money.eur(pricePerNight)), maxPets));
         }
 
         @Override
