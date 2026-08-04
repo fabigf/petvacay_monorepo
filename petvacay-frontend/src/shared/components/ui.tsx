@@ -1,0 +1,152 @@
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
+
+/** Primitivas de UI reutilizables. Sustituibles por Shadcn/ui sin tocar los modulos. */
+
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
+
+const buttonStyles: Record<ButtonVariant, string> = {
+  primary: 'bg-brand-600 text-white hover:bg-brand-700 focus-visible:outline-brand-600',
+  secondary: 'bg-white text-brand-700 border border-brand-200 hover:bg-brand-50',
+  ghost: 'bg-transparent text-slate-600 hover:bg-slate-100',
+  danger: 'bg-red-600 text-white hover:bg-red-700',
+}
+
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant
+  loading?: boolean
+}
+
+export function Button({
+  variant = 'primary',
+  loading = false,
+  disabled,
+  children,
+  className = '',
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      {...props}
+      disabled={disabled || loading}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition
+        disabled:cursor-not-allowed disabled:opacity-50 ${buttonStyles[variant]} ${className}`}
+    >
+      {loading && (
+        <span
+          aria-hidden
+          className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+        />
+      )}
+      {children}
+    </button>
+  )
+}
+
+export function Card({
+  children,
+  className = '',
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={`rounded-xl border border-sand-200 bg-white p-5 shadow-sm ${className}`}>
+      {children}
+    </div>
+  )
+}
+
+interface FieldProps {
+  label: string
+  htmlFor: string
+  error?: string
+  hint?: string
+  children: ReactNode
+}
+
+export function Field({ label, htmlFor, error, hint, children }: FieldProps) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={htmlFor} className="text-sm font-medium text-slate-700">
+        {label}
+      </label>
+      {children}
+      {hint && !error && <p className="text-xs text-slate-500">{hint}</p>}
+      {/* Mensaje por campo alimentado por invalid_params del backend */}
+      {error && (
+        <p role="alert" className="text-xs font-medium text-red-600">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
+const controlClass =
+  'w-full rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100 aria-[invalid=true]:border-red-400'
+
+export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} className={`${controlClass} ${className}`} />
+}
+
+export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select {...props} className={`${controlClass} ${className}`} />
+}
+
+export function Badge({
+  children,
+  tone = 'neutral',
+}: {
+  children: ReactNode
+  tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'info'
+}) {
+  const tones = {
+    neutral: 'bg-slate-100 text-slate-700',
+    success: 'bg-emerald-100 text-emerald-800',
+    warning: 'bg-amber-100 text-amber-800',
+    danger: 'bg-red-100 text-red-800',
+    info: 'bg-sky-100 text-sky-800',
+  }
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${tones[tone]}`}>
+      {children}
+    </span>
+  )
+}
+
+export function EmptyState({ title, description }: { title: string; description?: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-sand-200 bg-white/60 p-10 text-center">
+      <p className="font-semibold text-slate-700">{title}</p>
+      {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+    </div>
+  )
+}
+
+/**
+ * Placeholder de carga. Es una pieza central a partir de Fase 3: con Kafka de por
+ * medio el sistema es eventualmente consistente y la UI debe comunicar
+ * "procesando" en lugar de asumir respuesta inmediata.
+ */
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded-lg bg-sand-100 ${className}`} />
+}
+
+/**
+ * Aviso de consistencia eventual (fases.md Fase 3): informa de que una accion se
+ * confirmo en el modelo de escritura pero sus efectos derivados (proyecciones que
+ * viajan por Kafka, como el bloqueo de calendario del buscador) pueden tardar unos
+ * segundos en reflejarse. No es un error ni un estado de carga bloqueante: la
+ * accion ya tuvo exito, esto solo gestiona la expectativa del usuario.
+ */
+export function ProcessingNotice({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 text-sm text-sky-800">
+      <span
+        aria-hidden
+        className="mt-0.5 size-3.5 shrink-0 animate-spin rounded-full border-2 border-sky-400 border-t-transparent"
+      />
+      <p>{children}</p>
+    </div>
+  )
+}

@@ -1,0 +1,105 @@
+spring:
+  application:
+    name: identity-service
+  profiles:
+    default: dev
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8082
+  error:
+    include-message: never
+
+petvacay:
+  messaging:
+    # Transporte de eventos: spring (bus interno, solo util en solitario, Fase 1-3)
+    # | kafka (obligatorio para llegar a otros servicios desde la Fase 4).
+    provider: spring
+  jwt:
+    # Clave PRIVADA de firma: solo este servicio la tiene. En cualquier entorno
+    # real debe inyectarse desde fuera del artefacto (ver keys/README.md).
+    private-key-location: ${PETVACAY_JWT_PRIVATE_KEY_LOCATION:classpath:keys/jwt-dev-private.pem}
+    # Corto a proposito: el token de acceso no se puede revocar, asi que su vida
+    # es la ventana maxima de dano si se filtra. El refresco lo renueva de forma
+    # transparente, de modo que el usuario no nota la diferencia.
+    token-lifetime: PT15M
+    refresh-lifetime: P30D
+  auth:
+    # En desarrollo el frontend habla por HTTP, asi que la cookie no puede ser
+    # Secure. En produccion debe estar SIEMPRE en true (ver perfil postgres).
+    cookie-secure: false
+  admin:
+    bootstrap:
+      # Crea la cuenta de administrador inicial si no existe.
+      enabled: true
+      email: ${PETVACAY_ADMIN_EMAIL:admin@petvacay.test}
+      password: ${PETVACAY_ADMIN_PASSWORD:admin12345}
+
+logging:
+  level:
+    com.petvacay: INFO
+
+---
+# Perfil de desarrollo: H2 en memoria, sin dependencias externas.
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: jdbc:h2:mem:identity;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  flyway:
+    enabled: false
+
+petvacay:
+  seed:
+    enabled: true
+
+logging:
+  level:
+    com.petvacay: DEBUG
+
+---
+# Perfil de docker/produccion local: PostgreSQL gestionado con Flyway + Kafka.
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/identity}
+    username: ${POSTGRES_USER:petvacay}
+    password: ${POSTGRES_PASSWORD:petvacay}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+petvacay:
+  seed:
+    enabled: false
+  messaging:
+    provider: kafka
+  auth:
+    cookie-secure: ${PETVACAY_COOKIE_SECURE:true}
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    org.springframework.kafka: WARN

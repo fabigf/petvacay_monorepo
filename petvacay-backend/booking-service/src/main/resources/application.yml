@@ -1,0 +1,88 @@
+spring:
+  application:
+    name: booking-service
+  profiles:
+    default: dev
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+server:
+  port: 8083
+  error:
+    include-message: never
+
+petvacay:
+  scheduler:
+    # Frecuencia del barrido de solicitudes caducadas (24h sin respuesta del cuidador)
+    expire-requests-ms: 300000
+  messaging:
+    provider: spring
+  services:
+    identity:
+      # Contrato interno consumido por SitterCatalogHttpAdapter para tarificar y
+      # validar reservas. localhost:8082 asume identity-service arrancado aparte
+      # (docker o `mvn spring-boot:run`) durante el desarrollo local.
+      base-url: http://localhost:8082
+
+logging:
+  level:
+    com.petvacay: INFO
+
+---
+# Perfil de desarrollo: H2 en memoria, sin dependencias externas.
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: jdbc:h2:mem:booking;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  flyway:
+    enabled: false
+
+logging:
+  level:
+    com.petvacay: DEBUG
+
+---
+# Perfil de docker/produccion local: PostgreSQL gestionado con Flyway + Kafka.
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: ${POSTGRES_URL:jdbc:postgresql://localhost:5432/booking}
+    username: ${POSTGRES_USER:petvacay}
+    password: ${POSTGRES_PASSWORD:petvacay}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+petvacay:
+  messaging:
+    provider: kafka
+  services:
+    identity:
+      base-url: ${IDENTITY_SERVICE_URL:http://identity-service:8082}
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    org.springframework.kafka: WARN

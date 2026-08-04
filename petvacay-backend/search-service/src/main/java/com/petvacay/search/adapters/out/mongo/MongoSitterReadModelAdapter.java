@@ -1,0 +1,121 @@
+package com.petvacay.search.adapters.out.mongo;
+
+import com.petvacay.search.domain.model.SitterView;
+import com.petvacay.search.ports.out.SitterReadModelPort;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.geo.Distance;
+import org.springframework.data.geo.Metrics;
+import org.springframework.data.geo.Point;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.index.GeoSpatialIndexType;
+import org.springframework.data.mongodb.core.index.GeospatialIndex;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.stereotype.Component;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+/**
+ * Modelo de lectura del buscador sobre MongoDB.
+ *
+ * <p>Es la unica implementacion de {@link SitterReadModelPort} desde la Fase 4:
+ * el acotado por radio lo resuelve el indice 2dsphere en lugar de recorrer una
+ * tabla en memoria, y los bloqueos de calendario se aplican con operadores
+ * atomicos {@code $inc} en vez de leer, modificar y reescribir el documento, algo
+ * imprescindible con los eventos llegando por Kafka y procesandose en paralelo.
+ */
+@Component
+public class MongoSitterReadModelAdapter implements SitterReadModelPort {
+
+    private static final Logger log = LoggerFactory.getLogger(MongoSitterReadModelAdapter.class);
+
+    private final SitterViewMongoRepository repository;
+    private final MongoTemplate mongoTemplate;
+
+    public MongoSitterReadModelAdapter(SitterViewMongoRepository repository, MongoTemplate mongoTemplate) {
+        this.repository = repository;
+        this.mongoTemplate = mongoTemplate;
+    }
+
+    /**
+     * Crea el indice 2dsphere que exige {@code $nearSphere}.
+     *
+     * <p>Se hace aqui en vez de con {@code spring.data.mongodb.auto-index-creation}
+     * porque esa propiedad obliga a MongoTemplate a conectarse durante el arranque
+     * del contexto, lo que impediria levantar el perfil de desarrollo (que usa el
+     * modelo de lectura en PostgreSQL) sin tener un Mongo escuchando. Al colgarlo de
+     * este bean, el indice se crea exactamente cuando el almacen Mongo esta activo.
+     */
+    @PostConstruct
+    void ensureGeoIndex() {
+        mongoTemplate.indexOps(SitterViewDocument.class)
+                .ensureIndex(new GeospatialIndex("location").typed(GeoSpatialIndexType.GEO_2DSPHERE));
+        log.info("Modelo de lectura del buscador servido desde MongoDB (indice 2dsphere listo)");
+    }
+
+    @Override
+    public void upsert(SitterView view) {
+        SitterViewDocument document = repository.findById(view.sitterId())
+                .orElseGet(() -> SitterViewDocument.fromDomain(view));
+        document.applyCatalogData(view);
+        repository.save(document);
+    }
+
+    @Override
+    public void remove(UUID sitterId) {
+        repository.deleteById(sitterId);
+    }
+
+    @Override
+    public void removeAll() {
+        repository.deleteAll();
+    }
+
+    @Override
+    public Optional<SitterView> findById(UUID sitterId) {
+        return repository.findById(sitterId).map(SitterViewDocument::toDomain);
+    }
+
+    @Override
+    public List<SitterView> findNearby(double lat, double lng, double radiusKm) {
+        // GeoJSON usa el orden [longitud, latitud]
+        Query query = Query.query(Criteria.where("location")
+                .nearSphere(new Point(lng, lat))
+                .maxDistance(new Distance(radiusKm, Metrics.KILOMETERS).getNormalizedValue()));
+
+        return mongoTemplate.find(query, SitterViewDocument.class).stream()
+                .map(SitterViewDocument::toDomain)
+                .toList();
+    }
+
+    @Override
+    public void blockDates(UUID sitterId, LocalDate start, LocalDate end, int petCount) {
+        applyOccupancyDelta(sitterId, start, end, petCount);
+    }
+
+    @Override
+    public void releaseDates(UUID sitterId, LocalDate start, LocalDate end, int petCount) {
+        applyOccupancyDelta(sitterId, start, end, -petCount);
+    }
+
+    /** Un unico {@code $inc} por noche, atomico respecto a otros consumidores. */
+    private void applyOccupancyDelta(UUID sitterId, LocalDate start, LocalDate end, int delta) {
+        if (delta == 0) {
+            return;
+        }
+
+        Update update = new Update();
+        for (LocalDate night = start; night.isBefore(end); night = night.plusDays(1)) {
+            update.inc("occupancy." + night, delta);
+        }
+
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(sitterId)),
+                update, SitterViewDocument.class);
+    }
+}

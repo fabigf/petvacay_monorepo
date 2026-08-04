@@ -1,0 +1,106 @@
+# Sobrescritura para despliegue de produccion.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Diferencias respecto al entorno de desarrollo, todas deliberadas:
+#   - El frontend se sirve como estaticos por Nginx, no con el servidor de Vite.
+#   - Ningun servicio publica su puerto al host salvo Nginx (:80), que sirve el
+#     frontend y hace de proxy de /api hacia el Gateway. Bases de datos, Kafka,
+#     Redis y el propio Gateway dejan de estar expuestos.
+#   - Los secretos vienen del entorno; el compose no lleva ninguno por defecto.
+#
+# Antes de usarlo en serio hay que definir en el fichero .env:
+#   POSTGRES_PASSWORD, MONGO_PASSWORD, PETVACAY_ADMIN_PASSWORD,
+#   PETVACAY_JWT_PRIVATE_KEY_LOCATION, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
+
+services:
+  postgres-db:
+    ports: !override []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD}
+
+  mongodb:
+    ports: !override []
+    environment:
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?define MONGO_PASSWORD}
+
+  kafka:
+    ports: !override []
+    environment:
+      # Sin listener externo: en produccion nadie habla con Kafka desde fuera.
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://kafka:9093
+
+  redis:
+    ports: !override []
+
+  # Las claves se montan desde el host: ni la privada ni la publica viajan
+  # dentro de las imagenes. Los cuatro servicios y el Gateway necesitan la
+  # publica para verificar; solo identity-service tiene la privada para firmar.
+  identity-service:
+    ports: !override []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PETVACAY_JWT_PRIVATE_KEY_LOCATION: ${PETVACAY_JWT_PRIVATE_KEY_LOCATION:?define la ruta de la clave privada}
+      PETVACAY_JWT_PUBLIC_KEY_LOCATION: ${PETVACAY_JWT_PUBLIC_KEY_LOCATION:?define la ruta de la clave publica}
+      PETVACAY_ADMIN_EMAIL: ${PETVACAY_ADMIN_EMAIL:-admin@petvacay.test}
+      PETVACAY_ADMIN_PASSWORD: ${PETVACAY_ADMIN_PASSWORD:?define PETVACAY_ADMIN_PASSWORD}
+      # Cookie de refresco solo por HTTPS.
+      PETVACAY_COOKIE_SECURE: ${PETVACAY_COOKIE_SECURE:-true}
+    volumes:
+      - ${JWT_KEYS_DIR:-./infra/keys}:/run/secrets/keys:ro
+
+  booking-service:
+    ports: !override []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PETVACAY_JWT_PUBLIC_KEY_LOCATION: ${PETVACAY_JWT_PUBLIC_KEY_LOCATION}
+    volumes:
+      - ${JWT_KEYS_DIR:-./infra/keys}:/run/secrets/keys:ro
+
+  search-service:
+    ports: !override []
+    environment:
+      MONGODB_URI: mongodb://petvacay:${MONGO_PASSWORD}@mongodb:27017/petvacay_search?authSource=admin
+      PETVACAY_JWT_PUBLIC_KEY_LOCATION: ${PETVACAY_JWT_PUBLIC_KEY_LOCATION}
+    volumes:
+      - ${JWT_KEYS_DIR:-./infra/keys}:/run/secrets/keys:ro
+
+  payment-service:
+    ports: !override []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PETVACAY_JWT_PUBLIC_KEY_LOCATION: ${PETVACAY_JWT_PUBLIC_KEY_LOCATION}
+      PETVACAY_PAYMENTS_PROVIDER: ${PETVACAY_PAYMENTS_PROVIDER:-stripe}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?define STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?define STRIPE_WEBHOOK_SECRET}
+    volumes:
+      - ${JWT_KEYS_DIR:-./infra/keys}:/run/secrets/keys:ro
+
+  gateway-service:
+    # Sin puerto publicado: el unico proceso alcanzable desde fuera es Nginx,
+    # que sirve el frontend y hace de proxy de /api hacia aqui. Un solo punto de
+    # entrada significa un solo sitio donde terminar TLS y aplicar cabeceras.
+    ports: !override []
+    environment:
+      PETVACAY_JWT_PUBLIC_KEY_LOCATION: ${PETVACAY_JWT_PUBLIC_KEY_LOCATION}
+      PETVACAY_CORS_ALLOWED_ORIGINS: ${PETVACAY_CORS_ALLOWED_ORIGINS:?define los dominios del frontend}
+      REDIS_HOST: redis
+      IDENTITY_SERVICE_URL: http://identity-service:8082
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      SEARCH_SERVICE_URL: http://search-service:8084
+      PAYMENT_SERVICE_URL: http://payment-service:8085
+    volumes:
+      - ${JWT_KEYS_DIR:-./infra/keys}:/run/secrets/keys:ro
+
+  petvacay-frontend:
+    build:
+      target: production
+      args:
+        # Vite incrusta esta clave en el bundle en tiempo de build; es publica.
+        VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
+    # Nginx sirve los estaticos ya compilados; sin volumenes de codigo fuente.
+    # !override es imprescindible: sin el, Compose FUSIONA las listas y el
+    # puerto 3000 del servidor de desarrollo seguiria publicado.
+    volumes: !override []
+    ports: !override
+      - '80:80'

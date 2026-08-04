@@ -1,0 +1,240 @@
+# Entorno local completo de PetVacay.
+#
+# Desde la Fase 4 el backend son 4 microservicios independientes (identity,
+# booking, search, payment) mas un API Gateway. Cada uno mantiene la arquitectura
+# hexagonal de su contexto intacta: lo unico que cambio respecto a las Fases 1-3
+# es el limite de despliegue, no el diseno interno de cada uno.
+
+services:
+  postgres-db:
+    image: postgres:16-alpine
+    container_name: petvacay-postgres
+    environment:
+      # POSTGRES_DB crea la base "petvacay" por defecto; el script de abajo anade
+      # las bases logicas propias de identity-service, booking-service y
+      # payment-service (ver infra/postgres-init-databases.sql).
+      POSTGRES_DB: petvacay
+      POSTGRES_USER: petvacay
+      POSTGRES_PASSWORD: petvacay
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres-init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U petvacay -d petvacay']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Modelo de lectura del buscador (Fase 2): indice 2dsphere y ocupacion embebida.
+  # Es la unica base de datos de search-service; no tiene ninguna tabla relacional.
+  mongodb:
+    image: mongo:7
+    container_name: petvacay-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: petvacay
+      MONGO_INITDB_ROOT_PASSWORD: petvacay
+      MONGO_INITDB_DATABASE: petvacay_search
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', 'db.adminCommand("ping")']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  # Transporte de eventos de dominio (Fase 3), obligatorio entre servicios desde
+  # la Fase 4. Modo KRaft: sin Zookeeper, un unico binario hace de broker y de
+  # controlador del cluster.
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: petvacay-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9091
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # INTERNAL: red de Docker (los servicios -> kafka:9092).
+      # EXTERNAL: host, para poder arrancar un servicio en local con
+      # `mvn spring-boot:run` apuntando a `localhost:9093`.
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: CONTROLLER://0.0.0.0:9091,INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    ports:
+      - '9093:9093'
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ['CMD-SHELL', '/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092']
+      interval: 10s
+      timeout: 10s
+      retries: 15
+
+  # Contador del rate limiting del Gateway (estructura.md). En memoria no valdria:
+  # con varias replicas del Gateway el limite se multiplicaria por replica.
+  redis:
+    image: redis:7-alpine
+    container_name: petvacay-redis
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------- servicios
+
+  identity-service:
+    build:
+      context: ./petvacay-backend
+      dockerfile: identity-service/Dockerfile
+    container_name: petvacay-identity
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      POSTGRES_URL: jdbc:postgresql://postgres-db:5432/identity
+      POSTGRES_USER: petvacay
+      POSTGRES_PASSWORD: petvacay
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - '8082:8082'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:8082/actuator/health']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  booking-service:
+    build:
+      context: ./petvacay-backend
+      dockerfile: booking-service/Dockerfile
+    container_name: petvacay-booking
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      POSTGRES_URL: jdbc:postgresql://postgres-db:5432/booking
+      POSTGRES_USER: petvacay
+      POSTGRES_PASSWORD: petvacay
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # Contrato interno de identity-service (SitterCatalogHttpAdapter). Nunca
+      # pasa por el Gateway: es una llamada servicio-a-servicio directa.
+      IDENTITY_SERVICE_URL: http://identity-service:8082
+    ports:
+      - '8083:8083'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:8083/actuator/health']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  search-service:
+    build:
+      context: ./petvacay-backend
+      dockerfile: search-service/Dockerfile
+    container_name: petvacay-search
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      MONGODB_URI: mongodb://petvacay:petvacay@mongodb:27017/petvacay_search?authSource=admin
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - '8084:8084'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:8084/actuator/health']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  payment-service:
+    build:
+      context: ./petvacay-backend
+      dockerfile: payment-service/Dockerfile
+    container_name: petvacay-payment
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      POSTGRES_URL: jdbc:postgresql://postgres-db:5432/payment
+      POSTGRES_USER: petvacay
+      POSTGRES_PASSWORD: petvacay
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - '8085:8085'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:8085/actuator/health']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  gateway-service:
+    build:
+      context: ./petvacay-backend
+      dockerfile: gateway-service/Dockerfile
+    container_name: petvacay-gateway
+    depends_on:
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      booking-service:
+        condition: service_healthy
+      search-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: redis
+      IDENTITY_SERVICE_URL: http://identity-service:8082
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      SEARCH_SERVICE_URL: http://search-service:8084
+      PAYMENT_SERVICE_URL: http://payment-service:8085
+    ports:
+      - '8080:8080'
+
+  petvacay-frontend:
+    build:
+      context: ./petvacay-frontend
+      target: development
+    container_name: petvacay-frontend
+    depends_on:
+      - gateway-service
+    environment:
+      # El proxy de Vite reenvia /api al Gateway: React nunca se entera de que
+      # hay 4 servicios detras (especificaciones.md / fases.md Fase 4).
+      VITE_API_TARGET: http://gateway-service:8080
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./petvacay-frontend/src:/app/src
+      - ./petvacay-frontend/index.html:/app/index.html
+
+volumes:
+  postgres-data:
+  mongo-data:
+  kafka-data:

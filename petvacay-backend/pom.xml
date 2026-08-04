@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.petvacay</groupId>
+    <artifactId>petvacay-backend-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>petvacay-backend-parent</name>
+    <description>
+        PetVacay - agregador Maven de los microservicios (Fase 4).
+
+        Hasta la Fase 3 este mismo directorio era un unico modulo (un monolito
+        modular con un hexagono por contexto acotado). En Fase 4 ese monolito se
+        rompe en 4 servicios independientes con bases de datos propias, mas un
+        modulo `common` con lo estrictamente compartido y un `gateway-service` que
+        concentra el trafico de entrada. Cada servicio conserva intacta la
+        arquitectura hexagonal de su contexto: lo unico que cambia es el limite de
+        despliegue, no el diseño interno.
+    </description>
+
+    <properties>
+        <java.version>21</java.version>
+        <spring-cloud.version>2023.0.3</spring-cloud.version>
+        <!--
+            Los mensajes de negocio que ven los usuarios llevan tildes y enies.
+            Sin fijar la codificacion, javac usa la del sistema operativo (cp1252
+            en Windows, UTF-8 en los contenedores Linux) y el mismo codigo fuente
+            produciria textos distintos segun donde se compile.
+        -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    </properties>
+
+    <modules>
+        <module>common</module>
+        <module>identity-service</module>
+        <module>booking-service</module>
+        <module>search-service</module>
+        <module>payment-service</module>
+        <module>gateway-service</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.petvacay</groupId>
+                <artifactId>common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>

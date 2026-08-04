@@ -1,0 +1,11 @@
+# Secretos: nunca al repositorio
+.env
+.env.local
+.env.*.local
+infra/keys/
+
+# Build
+target/
+node_modules/
+dist/
+*.log

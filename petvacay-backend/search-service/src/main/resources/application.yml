@@ -1,0 +1,72 @@
+spring:
+  application:
+    name: search-service
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://petvacay:petvacay@localhost:27017/petvacay_search?authSource=admin}
+
+server:
+  port: 8084
+  error:
+    include-message: never
+
+petvacay:
+  messaging:
+    # Transporte de entrada: spring (bus interno, solo util en solitario) | kafka
+    # (obligatorio para recibir eventos de identity-service/booking-service desde
+    # la Fase 4). search-service nunca publica eventos, solo los consume.
+    provider: kafka
+  seed:
+    # Vacia el indice al arrancar para no arrastrar datos de sesiones anteriores.
+    # Deshabilitado por defecto: solo se activa explicitamente en desarrollo.
+    enabled: false
+
+logging:
+  level:
+    com.petvacay: INFO
+
+---
+# Perfil de desarrollo: mismo Mongo/Kafka que el resto de servicios via
+# `docker compose up -d mongodb kafka`, pero limpiando el indice en cada arranque.
+spring:
+  config:
+    activate:
+      on-profile: dev
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+
+petvacay:
+  seed:
+    enabled: true
+
+logging:
+  level:
+    com.petvacay: DEBUG
+
+---
+# Perfil de docker: Mongo y Kafka dentro de la red de contenedores.
+# Se llama "docker" (no "postgres" como el resto de servicios) porque
+# search-service no tiene ninguna base de datos relacional propia.
+spring:
+  config:
+    activate:
+      on-profile: docker
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    org.springframework.kafka: WARN
