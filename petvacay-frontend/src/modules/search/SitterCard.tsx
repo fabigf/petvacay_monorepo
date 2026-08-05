@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { HomeType, ServiceType, SitterSearchResult, Species } from '@/core/api/types'
 import { Button, Card } from '@/shared/components/ui'
 import { StarRating } from '@/shared/components/StarRating'
+import { SitterReviewsModal } from '@/modules/reviews/SitterReviewsModal'
 
 const homeTypeLabels: Record<HomeType, string> = {
   APARTMENT: 'Apartamento',
@@ -37,6 +39,7 @@ function Tag({ children, tone = 'neutral' }: { children: string; tone?: 'neutral
 
 export function SitterCard({ sitter }: { sitter: SitterSearchResult }) {
   const navigate = useNavigate()
+  const [showReviews, setShowReviews] = useState(false)
 
   return (
     <Card className="flex flex-col gap-3">
@@ -58,12 +61,22 @@ export function SitterCard({ sitter }: { sitter: SitterSearchResult }) {
           <p className="text-sm text-slate-500">
             {homeTypeLabels[sitter.homeType]} · a {sitter.distanceKm} km
           </p>
+          {/* La media y el recuento resumen la reputación, pero no dicen POR QUÉ:
+              el enlace abre los comentarios sin obligar a entrar antes en el
+              formulario de reserva, que era el único sitio donde se leían. */}
           {sitter.reviewCount > 0 ? (
-            <div className="mt-0.5 flex items-center gap-1.5">
+            <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
               <StarRating value={sitter.rating} size="sm" />
               <span className="text-xs text-slate-500">
                 {sitter.rating.toFixed(1)} ({sitter.reviewCount})
               </span>
+              <button
+                type="button"
+                onClick={() => setShowReviews(true)}
+                className="text-xs font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
+              >
+                Ver reseñas
+              </button>
             </div>
           ) : (
             <p className="mt-0.5 text-xs text-slate-400">Sin reseñas todavía</p>
@@ -83,6 +96,14 @@ export function SitterCard({ sitter }: { sitter: SitterSearchResult }) {
         {sitter.acceptedSpecies.map((species) => (
           <Tag key={species}>{speciesLabels[species]}</Tag>
         ))}
+        {/* Capacidad simultánea: condiciona si puede aceptar la reserva de quien
+            viaja con más de una mascota, así que merece verse antes de pulsar
+            "Reservar" y no al recibir un 409 por falta de plazas. */}
+        <Tag>
+          {sitter.maxSimultaneousPets === 1
+            ? 'Una mascota a la vez'
+            : `Hasta ${sitter.maxSimultaneousPets} mascotas a la vez`}
+        </Tag>
       </div>
 
       <div className="flex items-end justify-between gap-3">
@@ -97,6 +118,14 @@ export function SitterCard({ sitter }: { sitter: SitterSearchResult }) {
         </p>
         <Button onClick={() => navigate(`/bookings/new/${sitter.sitterId}`)}>Reservar</Button>
       </div>
+
+      {showReviews && (
+        <SitterReviewsModal
+          sitterId={sitter.sitterId}
+          sitterName={sitter.firstName}
+          onClose={() => setShowReviews(false)}
+        />
+      )}
     </Card>
   )
 }

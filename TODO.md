@@ -7,130 +7,19 @@ tareas inventadas. Cada uno indica por qué importa y, si aplica, dónde tocar.
 
 ## Negocio (auditoría final — nada de esto lo pidió `fases.md`, pero sí `negocio.md`)
 
-### 🔴 Crítico
-
-- [ ] **Los fondos no se liberan automáticamente.** `negocio.md` §3.2 dice que
-      el sistema libera los fondos 24h después de finalizar el servicio, pero
-      solo existe un `@Scheduled` (`BookingLifecycleScheduler.expireStaleRequests`)
-      y no dispara `start()`/`complete()` — esas transiciones solo se llaman a
-      mano vía API. **En la práctica el cuidador nunca cobra solo.**
-- [ ] **No existe forma de resolver una disputa.** `negocio.md` §4.4 dice que
-      "el equipo de administración analiza las pruebas... y dicta una
-      resolución manual", pero no hay ningún endpoint que saque una reserva de
-      `EN_DISPUTA` — ni siquiera uno para listar qué reservas están en disputa
-      (un admin tendría que conocer ya el `bookingId` de memoria). El propio
-      dominio (`Booking.java`) tiene el comentario *"Una reserva en disputa
-      solo puede resolverla el equipo de administración"* pero no hay caso de
-      uso que lo haga. Una vez una reserva entra en disputa, **se queda
-      congelada para siempre**, sin ninguna vía de recuperación. Falta:
-      - Caso de uso en `booking-service` (`ManageBookingUseCase.resolveDispute`
-        o similar) con las dos resoluciones posibles (a favor del cliente / del
-        cuidador, o un reparto) y su propio `CancellationOutcome`.
-      - Endpoint `GET /api/v1/admin/bookings?status=EN_DISPUTA` para listarlas.
-      - Endpoint `POST /api/v1/admin/bookings/{id}/resolve-dispute`.
-
-### 🟠 Alto
-
-- [ ] **`MascotaEnPeligroEvent` no está implementado.** `negocio.md` §5 lo
-      describe como evento crítico (botón de alerta médica, aviso al dueño,
-      canal prioritario a soporte). No hay ni rastro en el código.
-- [ ] **No existe ningún panel de administración en el frontend.** Todas las
-      operaciones que `negocio.md` §2.3 atribuye al administrador (aprobar/
-      rechazar cuidadores, resolver disputas, expulsar usuarios) solo se pueden
-      invocar hoy con curl/Postman usando el token de `admin@petvacay.test` —
-      no hay ni un módulo `modules/admin` ni una ruta protegida por
-      `ROLE_ADMIN` en `AppRouter.tsx`. La parte de verificación de cuidadores
-      ya tiene backend completo (`GET/POST /api/v1/admin/sitters/...`) y sería
-      la más rápida de exponer; resolución de disputas depende del punto
-      crítico de arriba, que no tiene ni backend todavía.
-
 ### 🟡 Medio
 
-- [ ] **No hay Notification Service** (`estructura.md`, servicio #7).
-      Consecuencia concreta: `ReservaSolicitadaEvent` y `DisputaAbiertaEvent`
-      se publican pero **nadie los consume** — el cuidador nunca se entera de
-      que tiene una solicitud pendiente. Relacionado: `negocio.md` §5 dice que
+- [ ] **No hay Notification Service** (`estructura.md`, servicio #7). Ojo: el
+      hueco que dejaba (que nadie consumiera `ReservaSolicitadaEvent` ni
+      `DisputaAbiertaEvent`) **ya está cubierto dentro de la app** por el centro
+      de notificaciones — ver "Ya resuelto". Lo que sigue faltando es el canal
+      **externo**: correo, push y SMS. Relacionado: `negocio.md` §5 dice que
       `PagoConfirmadoEvent` debe enviar al cliente "los datos exactos de la
       dirección de entrega de la mascota", pero esa dirección **ni siquiera se
       guarda** — `SitterProfile` solo tiene `latitude`/`longitude` (para
       calcular distancia en el buscador) y `homeType`, nunca una dirección
       postal legible. Aunque existiera el Notification Service, hoy no habría
       qué enviarle.
-- [ ] **La cancelación del cuidador no penaliza el posicionamiento en el
-      buscador, ni genera la reseña negativa automática.** `negocio.md` §4.3:
-      "el cuidador recibe una penalización automática en su posicionamiento
-      del buscador... **además de una reseña negativa del sistema**". El
-      reembolso al cliente sí funciona. Ya existe la pieza que faltaba (el
-      sistema de reseñas), así que esto es ahora un cambio contenido:
-      `CancellationPolicy` tendría que disparar algo que baje el
-      `rating`/posición del cuidador en `search-service` **y** que
-      `ReviewApplicationService` cree una reseña de 1 estrella con un autor de
-      sistema al cancelar el cuidador una reserva confirmada.
-- [ ] **No hay forma de expulsar a un usuario o cuidador.** `negocio.md` §2.3:
-      "Puede expulsar de manera fulminante a usuarios o cuidadores que
-      infrinjan los términos de servicio". El dominio ya tiene el método
-      `UserAccount.deactivate()` (`identity-service`) pero **no lo llama nadie**
-      — ni caso de uso, ni controlador. El login ya rechaza a un usuario
-      inactivo (`IdentityApplicationService`, dos comprobaciones de
-      `isActive()`), así que solo falta el endpoint
-      `POST /api/v1/admin/users/{id}/deactivate` que invoque `deactivate()`.
-
-### 🟢 Menor
-
-- [ ] `booking-service` no valida que los `petIds` recibidos pertenezcan de
-      verdad al cliente que hace la solicitud.
-
----
-
-## Buscador / tarjeta de cuidador (pedido explícito del usuario)
-
-- [ ] **Mostrar el número de plazas (`maxSimultaneousPets`) en la tarjeta del
-      buscador.** El dato ya vive en el modelo de lectura de `search-service`
-      (`SitterView`/`SitterViewDocument`, se usa hoy solo internamente para
-      filtrar por capacidad — `hasCapacity()`), pero nunca sale de ahí: el
-      record `SitterSearchResult` (`ports/in/SearchSittersUseCase.java`) no lo
-      incluye, así que tampoco llega al DTO de `SitterCard.tsx`. Cambio
-      contenido: añadir el campo al record + `SearchApplicationService.toResult()`
-      + `SitterSearchResult` en `core/api/types.ts` + un tag/línea más en
-      `SitterCard.tsx` (p. ej. "Hasta 2 mascotas a la vez").
-- [ ] **Ver las reseñas de un cuidador directamente desde su tarjeta del
-      buscador.** Escribir una reseña tras usar el servicio **ya funciona**
-      (`BookingDetailPage`, se habilita cuando la reserva está `FINALIZADO`) y
-      leerlas también existe como capacidad de API
-      (`GET /api/v1/reviews/sitters/{id}`, ya consumido por
-      `NewBookingPage.tsx`) — lo que falta es el acceso desde la propia
-      tarjeta de búsqueda: hoy `SitterCard.tsx` solo muestra la media y el
-      recuento (`sitter.rating`/`sitter.reviewCount`), no hay forma de leer
-      los comentarios sin pulsar antes "Reservar". Falta un enlace/botón "Ver
-      reseñas" en la tarjeta que abra un modal o navegue a una vista de solo
-      lectura del perfil público del cuidador, reutilizando
-      `listReviewsForSitter` (`reviewsApi.ts`).
-
----
-
-## Notificaciones en la app (pedido explícito del usuario)
-
-- [ ] **Símbolo de notificaciones (campana) en `AppLayout.tsx` con mensajes por
-      rol.** Centro de notificaciones dentro de la propia app — distinto del
-      "No hay Notification Service" de arriba (ese es email/push externos;
-      esto es una campanita con badge y un desplegable de mensajes, más simple
-      de construir primero y reutilizable después como canal adicional del
-      Notification Service real). Ejemplos de mensaje por rol que dio el
-      usuario:
-      - **Cliente:** "El cuidador ha aceptado tu solicitud" (al pasar
-        `SOLICITADO` → `PENDIENTE_PAGO`), y equivalentes para rechazo,
-        confirmación de pago, inicio/fin del servicio.
-      - **Cuidador:** "Tienes una reserva pendiente" (`ReservaSolicitadaEvent`,
-        que hoy se publica y nadie consume — ver arriba).
-      - **Admin:** "Cuidador pendiente de verificar", "Incidencia por
-        resolver" — depende de que exista primero el panel de admin y (para
-        incidencias) el endpoint de resolución de disputas, ambos ya listados
-        arriba como 🔴/🟠.
-      Implementación sugerida: tabla de notificaciones en el servicio que
-      corresponda (o una nueva, ligera) alimentada por los mismos eventos de
-      dominio que ya se publican (`ReservaSolicitadaEvent`,
-      `PagoConfirmadoEvent`, etc.), endpoint de listado + marcar como leída, y
-      un icono en `AppLayout.tsx` con recuento de no leídas.
 
 ---
 
@@ -198,6 +87,44 @@ tareas inventadas. Cada uno indica por qué importa y, si aplica, dónde tocar.
 ---
 
 ## Ya resuelto (para no repetir trabajo)
+
+- ✅ **Los fondos ya se liberan solos.** `BookingLifecycleScheduler` tiene dos
+      barridos nuevos: `startDueBookings()` (CONFIRMADO → EN_PROGRESO al llegar
+      la fecha de inicio) y `releaseDuePayouts()` (EN_PROGRESO → FINALIZADO 24h
+      después del fin, lo que emite `ReservaFinalizadaEvent` y liquida al
+      cuidador). Un fallo aislado no aborta el resto del lote.
+- ✅ **Una disputa ya tiene salida** (`negocio.md` §4.4): `Booking.resolveDispute()`
+      + `CancellationPolicy.resolveDispute()`, evento `DisputaResueltaEvent`
+      consumido por `payment-service` (asienta el reparto) y `search-service`
+      (libera el calendario, que la disputa mantenía bloqueado), y los endpoints
+      `GET /api/v1/admin/bookings?status=` y
+      `POST /api/v1/admin/bookings/{id}/resolve-dispute`. El reparto se
+      parametriza solo con el reembolso al cliente: con reembolso 0 sale
+      exactamente la misma liquidación que una reserva finalizada sin incidencias.
+- ✅ **`MascotaEnPeligroEvent` implementado**: `POST /api/v1/bookings/{id}/emergency`
+      (solo el cuidador), que avisa al dueño y al equipo de soporte sin tocar el
+      estado de la reserva ni congelar el escrow — penalizar económicamente al
+      cuidador por dar la alarma sería el incentivo contrario.
+- ✅ **Panel de administración en el frontend** (`modules/admin`, ruta `/admin`
+      protegida por `ROLE_ADMIN`): verificar/rechazar cuidadores, resolver
+      incidencias y expulsar cuentas, las tres competencias de `negocio.md` §2.3.
+- ✅ **Centro de notificaciones en la app**: campana con recuento en
+      `AppLayout.tsx`, alimentada por los mismos eventos de dominio
+      (`NotificationFactory`), con buzón propio por usuario y una audiencia
+      compartida para el equipo de administración. `GET /api/v1/notifications`,
+      marcar una o todas como leídas.
+- ✅ **La cancelación del cuidador ya penaliza**: reseña automática de 1 estrella
+      con autor `SYSTEM` (`Review.systemCancellationPenalty`) y penalización de
+      posicionamiento en el buscador — cada cancelación suma 10 km ficticios a su
+      distancia en el orden del listado, con tope de 50.
+- ✅ **Expulsión de cuentas**: `POST /api/v1/admin/users/{id}/deactivate`, que
+      además revoca los tokens de refresco (sin eso el expulsado seguiría
+      renovando su sesión indefinidamente).
+- ✅ `booking-service` valida que los `petIds` son del cliente que reserva
+      (`ClientPetsPort` → `GET /api/v1/internal/users/{ownerId}/pet-ids`). Ante un
+      fallo de red se rechaza la reserva, no se deja pasar.
+- ✅ Las plazas del cuidador (`maxSimultaneousPets`) se ven en la tarjeta del
+      buscador, y desde ella se pueden leer sus reseñas sin empezar a reservar.
 
 - ✅ Tildes/ñ revisadas en todo `petvacay-frontend/src` + `index.html`.
 - ✅ CORS del Gateway configurable por entorno (antes fijo a `localhost`).

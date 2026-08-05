@@ -46,6 +46,9 @@ public class Booking {
     private CancellationActor cancelledBy;
     private CancellationOutcome cancellationOutcome;
     private String disputeReason;
+    private DisputeResolution disputeResolution;
+    private String disputeResolutionNotes;
+    private UUID disputeResolvedBy;
 
     private final transient List<DomainEvent> pendingEvents = new ArrayList<>();
 
@@ -85,7 +88,8 @@ public class Booking {
                                     PricingBreakdown pricing, BookingStatus status,
                                     Instant requestedAt, Instant confirmedAt, Instant closedAt,
                                     CancellationActor cancelledBy, CancellationOutcome cancellationOutcome,
-                                    String disputeReason) {
+                                    String disputeReason, DisputeResolution disputeResolution,
+                                    String disputeResolutionNotes, UUID disputeResolvedBy) {
         Booking booking = new Booking(id, clientId, sitterId, petIds, dates, serviceType,
                 pricePerNight, pricing, status);
         booking.requestedAt = requestedAt;
@@ -94,6 +98,9 @@ public class Booking {
         booking.cancelledBy = cancelledBy;
         booking.cancellationOutcome = cancellationOutcome;
         booking.disputeReason = disputeReason;
+        booking.disputeResolution = disputeResolution;
+        booking.disputeResolutionNotes = disputeResolutionNotes;
+        booking.disputeResolvedBy = disputeResolvedBy;
         return booking;
     }
 
@@ -122,6 +129,8 @@ public class Booking {
                     "La solicitud superó el plazo de 24 horas de respuesta y ya no puede aceptarse.");
         }
         this.status = BookingStatus.PENDIENTE_PAGO;
+        raise(new BookingEvents.ReservaAceptadaEvent(UUID.randomUUID(), now, id, clientId, sitterId,
+                pricing.totalChargedToClient()));
     }
 
     /** SOLICITADO -> CANCELADO por decision explicita del cuidador. */
@@ -187,6 +196,21 @@ public class Booking {
                 dates, petIds.size(), pricing.sitterPayout(), pricing.platformRevenue()));
     }
 
+    /**
+     * Boton de alerta medica del cuidador (negocio.md 5). Solo tiene sentido con
+     * la mascota ya bajo su cuidado, es decir con el servicio en curso o a punto
+     * de empezar; no altera el estado de la reserva ni el escrow.
+     */
+    public void raisePetEmergency(String description, Instant now) {
+        if (status != BookingStatus.CONFIRMADO && status != BookingStatus.EN_PROGRESO) {
+            throw BusinessRuleViolationException.conflict(
+                    "ERR_EMERGENCY_NOT_IN_SERVICE", "Servicio no activo",
+                    "Solo puede darse una alerta médica mientras la reserva está en curso.");
+        }
+        raise(new BookingEvents.MascotaEnPeligroEvent(UUID.randomUUID(), now, id, sitterId, clientId,
+                petIds, description));
+    }
+
     /** Congela la reserva y detiene la liberacion automatica de fondos. */
     public void openDispute(UUID openedBy, String reason, Instant now) {
         if (status != BookingStatus.CONFIRMADO && status != BookingStatus.EN_PROGRESO) {
@@ -200,6 +224,33 @@ public class Booking {
         this.status = BookingStatus.EN_DISPUTA;
         this.disputeReason = reason;
         raise(new BookingEvents.DisputaAbiertaEvent(UUID.randomUUID(), now, id, openedBy, reason));
+    }
+
+    /**
+     * EN_DISPUTA -> FINALIZADO por resolucion manual del equipo de administracion
+     * (negocio.md 4.4). Es la unica salida de una disputa: sin ella la reserva se
+     * queda congelada para siempre y el dinero, retenido en el escrow.
+     *
+     * <p>El estado final es FINALIZADO aunque se le devuelva todo al cliente: la
+     * reserva llego a pagarse y a bloquear el calendario, asi que llamarla
+     * CANCELADO falsearia su historia. Que dinero acabo en cada mano lo cuenta el
+     * {@link CancellationOutcome}, no el estado.
+     *
+     * @param refundToClient importe que el administrador devuelve al cliente; la
+     *                       resolucion en si viaja en el evento, no cambia el calculo.
+     */
+    public void resolveDispute(UUID resolvedBy, DisputeResolution resolution, Money refundToClient,
+                               String notes, Instant now) {
+        requireStatus(now, BookingStatus.EN_DISPUTA);
+        CancellationOutcome outcome = CancellationPolicy.resolveDispute(this, refundToClient);
+        this.status = BookingStatus.FINALIZADO;
+        this.cancellationOutcome = outcome;
+        this.closedAt = now;
+        this.disputeResolution = resolution;
+        this.disputeResolutionNotes = notes;
+        this.disputeResolvedBy = resolvedBy;
+        raise(new BookingEvents.DisputaResueltaEvent(UUID.randomUUID(), now, id, clientId, sitterId,
+                dates, petIds.size(), resolvedBy, resolution, notes, outcome));
     }
 
     /** Cancelacion iniciada por cliente o cuidador; aplica la politica de reembolso. */
@@ -324,5 +375,17 @@ public class Booking {
 
     public String disputeReason() {
         return disputeReason;
+    }
+
+    public DisputeResolution disputeResolution() {
+        return disputeResolution;
+    }
+
+    public String disputeResolutionNotes() {
+        return disputeResolutionNotes;
+    }
+
+    public UUID disputeResolvedBy() {
+        return disputeResolvedBy;
     }
 }

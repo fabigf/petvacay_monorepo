@@ -45,6 +45,29 @@ public final class Review {
         return new Review(UUID.randomUUID(), bookingId, authorId, subjectId, authorRole, rating, comment, now);
     }
 
+    /**
+     * Identificador del autor de las resenas que escribe la propia plataforma.
+     * Es una constante, no una cuenta real: permite guardar el {@code author_id}
+     * obligatorio sin inventarse un usuario ni dejar la columna nula, y hace que
+     * estas resenas se reconozcan de un vistazo en la base de datos.
+     */
+    public static final UUID SYSTEM_AUTHOR_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
+    /** Puntuacion de la resena automatica por cancelacion del cuidador. */
+    private static final int CANCELLATION_PENALTY_RATING = 1;
+
+    /**
+     * Resena negativa automatica por cancelar una reserva ya confirmada
+     * (negocio.md 4.3: "ademas de una resena negativa del sistema"). El texto es
+     * fijo y describe el hecho objetivo, sin juzgar el motivo: la plataforma
+     * registra que la cancelacion ocurrio, no por que.
+     */
+    public static Review systemCancellationPenalty(UUID bookingId, UUID sitterId, Instant now) {
+        return new Review(UUID.randomUUID(), bookingId, SYSTEM_AUTHOR_ID, sitterId,
+                ReviewAuthorRole.SYSTEM, CANCELLATION_PENALTY_RATING,
+                "El cuidador canceló esta reserva una vez confirmada.", now);
+    }
+
     /** Rehidratacion desde el adaptador de persistencia. */
     public static Review rehydrate(UUID id, UUID bookingId, UUID authorId, UUID subjectId,
                                    ReviewAuthorRole authorRole, int rating, String comment, Instant createdAt) {

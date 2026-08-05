@@ -14,6 +14,7 @@ import com.petvacay.identity.ports.in.IdentityUseCases.QueryUserUseCase;
 import com.petvacay.identity.ports.in.IdentityUseCases.RegisterUserUseCase;
 import com.petvacay.identity.ports.in.IdentityUseCases.SitterOnboardingUseCase;
 import com.petvacay.identity.ports.in.IdentityUseCases.SitterVerificationUseCase;
+import com.petvacay.identity.ports.in.IdentityUseCases.UserModerationUseCase;
 import com.petvacay.identity.ports.out.IdentityPorts.AccessTokenIssuerPort;
 import com.petvacay.identity.ports.out.IdentityPorts.IdentityEventPublisherPort;
 import com.petvacay.identity.ports.out.IdentityPorts.PasswordHasherPort;
@@ -45,7 +46,7 @@ import java.util.UUID;
 @Service
 public class IdentityApplicationService
         implements RegisterUserUseCase, LoginUseCase, QueryUserUseCase, ManagePetsUseCase,
-        SitterOnboardingUseCase, SitterVerificationUseCase {
+        SitterOnboardingUseCase, SitterVerificationUseCase, UserModerationUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(IdentityApplicationService.class);
 
@@ -320,6 +321,29 @@ public class IdentityApplicationService
         SitterProfile profile = requireSitter(sitterId);
         profile.reject(reason, clock.instant());
         return persist(profile);
+    }
+
+    /**
+     * Expulsion de una cuenta. Revocar los tokens de refresco es lo que la hace
+     * efectiva de verdad: sin ello el expulsado seguiria renovando su sesion
+     * indefinidamente, porque {@code refresh} le devolveria un token nuevo antes
+     * de que nadie mirara si su cuenta sigue activa.
+     */
+    @Override
+    @Transactional
+    public UserAccount deactivate(UUID userId) {
+        UserAccount user = requireUser(userId);
+        if (user.hasRole(Role.ROLE_ADMIN)) {
+            throw BusinessRuleViolationException.conflict(
+                    "ERR_CANNOT_DEACTIVATE_ADMIN", "Cuenta protegida",
+                    "Una cuenta de administración no puede expulsarse desde el panel.");
+        }
+
+        user.deactivate();
+        UserAccount saved = users.save(user);
+        refreshTokens.revokeAllForUser(userId, clock.instant());
+        log.info("Cuenta {} desactivada por un administrador; sesiones revocadas", userId);
+        return saved;
     }
 
     @Override

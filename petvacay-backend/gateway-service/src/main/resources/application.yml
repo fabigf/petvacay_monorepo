@@ -26,6 +26,21 @@ spring:
                 redis-rate-limiter.burstCapacity: 10
                 redis-rate-limiter.requestedTokens: 1
 
+        # El back-office esta repartido entre dos servicios: /admin/sitters/** lo
+        # sirve identity-service y /admin/bookings/** booking-service, que es
+        # quien tiene el agregado. Esta ruta va ANTES que la de identity-service
+        # porque el Gateway evalua en orden y aquella casa con /admin/** entero.
+        - id: booking-admin
+          uri: ${BOOKING_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/admin/bookings/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: '#{@clientIpKeyResolver}'
+                redis-rate-limiter.replenishRate: 30
+                redis-rate-limiter.burstCapacity: 60
+
         # /internal/** de identity-service NO se enruta aqui a proposito: es un
         # contrato exclusivo para llamadas servicio-a-servicio (booking-service lo
         # consume directamente por su URL interna) y nunca debe quedar accesible
@@ -51,6 +66,22 @@ spring:
                 key-resolver: '#{@clientIpKeyResolver}'
                 redis-rate-limiter.replenishRate: 30
                 redis-rate-limiter.burstCapacity: 60
+
+        # Campana de avisos de la app. La sirve booking-service, que es donde nace
+        # casi todo lo que hay que notificar; no la sirve el Notification Service
+        # de estructura.md porque ese (correo, push, SMS) sigue pendiente.
+        - id: notifications
+          uri: ${BOOKING_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/notifications/**
+          filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: '#{@clientIpKeyResolver}'
+                # Se consulta al abrir la app y al pulsar la campana: mas holgado
+                # que el resto de operaciones de escritura.
+                redis-rate-limiter.replenishRate: 50
+                redis-rate-limiter.burstCapacity: 100
 
         # Prefijo propio: las resenas publicas de un cuidador no son una
         # operacion "de una reserva concreta" (eso ya lo cubre la ruta de

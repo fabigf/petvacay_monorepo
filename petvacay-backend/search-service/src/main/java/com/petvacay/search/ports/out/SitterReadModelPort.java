@@ -63,4 +63,11 @@ public interface SitterReadModelPort {
      * varias resenas pueden llegar por Kafka casi a la vez).
      */
     void recordReview(UUID sitterId, int rating);
+
+    /**
+     * Anota que el cuidador cancelo una reserva ya confirmada, lo que le penaliza
+     * en el orden del listado (negocio.md 4.3). Tambien con {@code $inc} atomico,
+     * por el mismo motivo que el resto de contadores.
+     */
+    void recordSitterCancellation(UUID sitterId);
 }

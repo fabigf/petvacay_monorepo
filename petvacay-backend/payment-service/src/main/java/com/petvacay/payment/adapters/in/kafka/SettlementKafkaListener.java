@@ -45,4 +45,9 @@ public class SettlementKafkaListener {
     public void onReservaCancelada(String payload) throws Exception {
         handler.onReservaCancelada(objectMapper.readValue(payload, BookingEvents.ReservaCanceladaEvent.class));
     }
+
+    @KafkaListener(topics = BookingEvents.DisputaResueltaEvent.TOPIC, groupId = GROUP_ID)
+    public void onDisputaResuelta(String payload) throws Exception {
+        handler.onDisputaResuelta(objectMapper.readValue(payload, BookingEvents.DisputaResueltaEvent.class));
+    }
 }

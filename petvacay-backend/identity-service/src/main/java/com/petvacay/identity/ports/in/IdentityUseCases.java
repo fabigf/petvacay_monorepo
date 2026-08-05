@@ -135,6 +135,22 @@ public final class IdentityUseCases {
         }
     }
 
+    /**
+     * Expulsion de cuentas por el administrador (negocio.md 2.3: "puede expulsar
+     * de manera fulminante a usuarios o cuidadores que infrinjan los terminos").
+     */
+    public interface UserModerationUseCase {
+
+        /**
+         * Desactiva la cuenta y revoca sus tokens de refresco, de modo que la
+         * sesion abierta no pueda renovarse. El token de acceso ya emitido sigue
+         * siendo valido hasta que caduca (minutos): es el precio conocido de una
+         * autenticacion sin estado, y revisarlo en cada peticion exigiria
+         * consultar la base de datos de identidad desde los cuatro servicios.
+         */
+        UserAccount deactivate(UUID userId);
+    }
+
     /** Operaciones reservadas al administrador de la plataforma. */
     public interface SitterVerificationUseCase {
 

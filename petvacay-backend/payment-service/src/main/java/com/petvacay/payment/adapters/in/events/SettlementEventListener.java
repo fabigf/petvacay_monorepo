@@ -40,4 +40,9 @@ public class SettlementEventListener {
     public void on(BookingEvents.ReservaCanceladaEvent event) {
         handler.onReservaCancelada(event);
     }
+
+    @EventListener
+    public void on(BookingEvents.DisputaResueltaEvent event) {
+        handler.onDisputaResuelta(event);
+    }
 }

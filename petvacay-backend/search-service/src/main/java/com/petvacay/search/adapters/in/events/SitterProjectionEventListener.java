@@ -49,6 +49,11 @@ public class SitterProjectionEventListener {
     }
 
     @EventListener
+    public void on(BookingEvents.DisputaResueltaEvent event) {
+        handler.onDisputaResuelta(event);
+    }
+
+    @EventListener
     public void on(BookingEvents.ResenaCreadaEvent event) {
         handler.onResenaCreada(event);
     }

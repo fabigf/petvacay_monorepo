@@ -10,6 +10,7 @@ import { NewBookingPage } from '@/modules/bookings/NewBookingPage'
 import { BookingDetailPage } from '@/modules/bookings/BookingDetailPage'
 import { SitterOnboardingPage } from '@/modules/onboarding/SitterOnboardingPage'
 import { PetsPage } from '@/modules/pets/PetsPage'
+import { AdminPage } from '@/modules/admin/AdminPage'
 
 export function AppRouter() {
   return (
@@ -60,6 +61,17 @@ export function AppRouter() {
             element={
               <ProtectedRoute roles={['ROLE_SITTER']}>
                 <SitterOnboardingPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Back-office. El rol se comprueba también en cada endpoint del
+              backend: esto solo evita enseñar una pantalla que no funcionaría. */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute roles={['ROLE_ADMIN']}>
+                <AdminPage />
               </ProtectedRoute>
             }
           />

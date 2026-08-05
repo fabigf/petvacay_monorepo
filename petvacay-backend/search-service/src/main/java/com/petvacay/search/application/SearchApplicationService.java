@@ -31,7 +31,12 @@ public class SearchApplicationService implements SearchSittersUseCase {
                 .filter(view -> query.startDate() == null || query.endDate() == null
                         || view.hasCapacity(query.startDate(), query.endDate(), petCount))
                 .map(view -> new ScoredView(view, distance(query, view)))
-                .sorted(Comparator.comparingDouble(ScoredView::distanceKm))
+                // Se ordena por distancia penalizada, no por distancia real: cada
+                // reserva confirmada que el cuidador haya cancelado le suma
+                // kilometros ficticios (negocio.md 4.3, "penalizacion automatica en
+                // su posicionamiento"). Lo que se muestra sigue siendo la distancia
+                // de verdad.
+                .sorted(Comparator.comparingDouble(ScoredView::rankingDistanceKm))
                 .map(SearchApplicationService::toResult)
                 .toList();
     }
@@ -53,9 +58,14 @@ public class SearchApplicationService implements SearchSittersUseCase {
                 view.homeType(),
                 view.photoUrl(),
                 view.acceptedSpecies(),
-                view.offeredServices());
+                view.offeredServices(),
+                view.maxSimultaneousPets());
     }
 
     private record ScoredView(SitterView view, double distanceKm) {
+
+        double rankingDistanceKm() {
+            return distanceKm + view.rankingPenaltyKm();
+        }
     }
 }

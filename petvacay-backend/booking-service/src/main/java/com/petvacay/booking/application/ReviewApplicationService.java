@@ -3,6 +3,7 @@ package com.petvacay.booking.application;
 import com.petvacay.booking.domain.event.BookingEvents;
 import com.petvacay.booking.domain.model.Booking;
 import com.petvacay.booking.domain.model.BookingStatus;
+import com.petvacay.booking.domain.model.CancellationOutcome;
 import com.petvacay.booking.domain.model.Review;
 import com.petvacay.booking.domain.model.ReviewAuthorRole;
 import com.petvacay.booking.ports.in.ReviewUseCase;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -85,6 +87,42 @@ public class ReviewApplicationService implements ReviewUseCase {
         }
 
         return saved;
+    }
+
+    /**
+     * Resena negativa automatica por cancelacion del cuidador (negocio.md 4.3).
+     *
+     * <p>Se apoya en el {@code CancellationOutcome} que ya calculo el dominio en
+     * vez de volver a decidir aqui si la cancelacion era penalizable: la politica
+     * de reembolso y la penalizacion de reputacion responden a la misma pregunta
+     * ("¿fue el cuidador quien dejo colgado a alguien?") y deben responderla
+     * igual. {@code SITTER_CANCELLED} solo se emite si la reserva estaba pagada;
+     * rechazar una solicitud todavia sin pagar no penaliza a nadie.
+     */
+    @Override
+    @Transactional
+    public Optional<Review> penalizeSitterCancellation(UUID bookingId) {
+        Booking booking = loadBooking(bookingId);
+        CancellationOutcome outcome = booking.cancellationOutcome();
+
+        if (outcome == null
+                || outcome.policyApplied() != CancellationOutcome.CancellationPolicyKind.SITTER_CANCELLED) {
+            return Optional.empty();
+        }
+        if (reviews.existsByBookingIdAndAuthorRole(bookingId, ReviewAuthorRole.SYSTEM)) {
+            return Optional.empty();
+        }
+
+        Review saved = reviews.save(
+                Review.systemCancellationPenalty(bookingId, booking.sitterId(), now()));
+
+        // Mismo evento que una resena de cliente: search-service no necesita saber
+        // que esta la escribio la plataforma, solo que la reputacion del cuidador
+        // ha bajado. Esa caida ES la penalizacion en el buscador.
+        publish(new BookingEvents.ResenaCreadaEvent(
+                UUID.randomUUID(), now(), bookingId, saved.id(), booking.sitterId(), saved.rating()));
+
+        return Optional.of(saved);
     }
 
     @Override

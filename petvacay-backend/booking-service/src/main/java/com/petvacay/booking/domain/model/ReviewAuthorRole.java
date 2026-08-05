@@ -8,5 +8,12 @@ package com.petvacay.booking.domain.model;
  */
 public enum ReviewAuthorRole {
     CLIENT,
-    SITTER
+    SITTER,
+    /**
+     * La plataforma. Solo la usa la resena negativa automatica que genera la
+     * cancelacion de un cuidador sobre una reserva ya confirmada (negocio.md
+     * 4.3): no la escribe ninguna persona, y por eso no consume el cupo de
+     * ninguna de las dos partes — el cliente afectado puede dejar la suya igual.
+     */
+    SYSTEM
 }

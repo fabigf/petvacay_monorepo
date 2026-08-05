@@ -47,6 +47,10 @@ public interface SearchSittersUseCase {
             HomeType homeType,
             String photoUrl,
             Set<Species> acceptedSpecies,
-            Set<ServiceType> offeredServices) {
+            Set<ServiceType> offeredServices,
+            // Plazas del cuidador. El modelo de lectura ya lo guardaba para filtrar
+            // por capacidad, pero no salia de ahi; es informacion que el cliente
+            // quiere ver antes de reservar ("hasta 2 mascotas a la vez").
+            int maxSimultaneousPets) {
     }
 }

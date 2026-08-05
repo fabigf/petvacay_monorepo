@@ -70,9 +70,10 @@ class BookingLifecycleTest {
         booking.acceptBySitter(BEFORE_START.plus(Duration.ofHours(1)));
         booking.confirmPayment(BEFORE_START.plus(Duration.ofHours(2)));
 
+        // Aceptar tambien avisa: es lo que le dice al cliente que le toca pagar.
         assertThat(booking.pullPendingEvents())
-                .singleElement()
-                .isInstanceOf(BookingEvents.PagoConfirmadoEvent.class);
+                .hasExactlyElementsOfTypes(BookingEvents.ReservaAceptadaEvent.class,
+                        BookingEvents.PagoConfirmadoEvent.class);
     }
 
     @Test
@@ -148,6 +149,78 @@ class BookingLifecycleTest {
         }
 
         @Test
+        @DisplayName("el administrador la resuelve a favor del cuidador con el mismo reparto que una reserva normal")
+        void resolutionForSitterMatchesNormalPayout() {
+            Booking booking = disputedBooking();
+
+            booking.resolveDispute(UUID.randomUUID(), DisputeResolution.FAVOR_SITTER, Money.eur("0.00"),
+                    "Sin pruebas que respalden la reclamacion", instantAt(END).plus(Duration.ofDays(2)));
+
+            assertThat(booking.status()).isEqualTo(BookingStatus.FINALIZADO);
+            assertThat(booking.cancellationOutcome().refundToClient()).isEqualTo(Money.eur("0.00"));
+            assertThat(booking.cancellationOutcome().payoutToSitter())
+                    .isEqualTo(booking.pricing().sitterPayout());
+            assertThat(booking.cancellationOutcome().platformRevenue())
+                    .isEqualTo(booking.pricing().platformRevenue());
+        }
+
+        @Test
+        @DisplayName("a favor del cliente devuelve todo y no deja nada al cuidador ni a la plataforma")
+        void resolutionForClientRefundsEverything() {
+            Booking booking = disputedBooking();
+            Money total = booking.pricing().totalChargedToClient();
+
+            booking.resolveDispute(UUID.randomUUID(), DisputeResolution.FAVOR_CLIENT, total,
+                    "Informe veterinario concluyente", instantAt(END).plus(Duration.ofDays(2)));
+
+            assertThat(booking.cancellationOutcome().refundToClient()).isEqualTo(total);
+            assertThat(booking.cancellationOutcome().payoutToSitter().isZero()).isTrue();
+            assertThat(booking.cancellationOutcome().platformRevenue().isZero()).isTrue();
+        }
+
+        @Test
+        @DisplayName("el reparto de una disputa nunca reparte mas dinero del que se cobro")
+        void splitNeverExceedsWhatWasCharged() {
+            Booking booking = disputedBooking();
+            Money total = booking.pricing().totalChargedToClient();
+
+            booking.resolveDispute(UUID.randomUUID(), DisputeResolution.SPLIT, Money.eur("50.00"),
+                    "Responsabilidad compartida", instantAt(END).plus(Duration.ofDays(2)));
+
+            CancellationOutcome outcome = booking.cancellationOutcome();
+            assertThat(outcome.refundToClient()
+                    .plus(outcome.payoutToSitter())
+                    .plus(outcome.platformRevenue()))
+                    .isEqualTo(total);
+        }
+
+        @Test
+        @DisplayName("rechaza un reembolso mayor que lo pagado por el cliente")
+        void refundCannotExceedTotal() {
+            Booking booking = disputedBooking();
+
+            assertThatThrownBy(() -> booking.resolveDispute(UUID.randomUUID(), DisputeResolution.SPLIT,
+                    Money.eur("100000.00"), "importe absurdo", instantAt(END).plus(Duration.ofDays(2))))
+                    .isInstanceOf(BusinessRuleViolationException.class)
+                    .extracting(ex -> ((BusinessRuleViolationException) ex).getCode())
+                    .isEqualTo("ERR_DISPUTE_REFUND_OUT_OF_RANGE");
+        }
+
+        @Test
+        @DisplayName("emite DisputaResuelta con el reparto para que payment-service lo asiente")
+        void emitsResolutionEvent() {
+            Booking booking = disputedBooking();
+            booking.pullPendingEvents();
+
+            booking.resolveDispute(UUID.randomUUID(), DisputeResolution.FAVOR_SITTER, Money.eur("0.00"),
+                    "resuelto", instantAt(END).plus(Duration.ofDays(2)));
+
+            assertThat(booking.pullPendingEvents())
+                    .singleElement()
+                    .isInstanceOf(BookingEvents.DisputaResueltaEvent.class);
+        }
+
+        @Test
         @DisplayName("no se admiten disputas pasada la ventana de 24h")
         void disputeWindowCloses() {
             Booking booking = confirmedBooking();
@@ -158,6 +231,13 @@ class BookingLifecycleTest {
                     .isInstanceOf(BusinessRuleViolationException.class)
                     .extracting(ex -> ((BusinessRuleViolationException) ex).getCode())
                     .isEqualTo("ERR_DISPUTE_WINDOW_CLOSED");
+        }
+
+        private Booking disputedBooking() {
+            Booking booking = confirmedBooking();
+            booking.start(instantAt(START));
+            booking.openDispute(UUID.randomUUID(), "La mascota volvio con una herida", instantAt(END));
+            return booking;
         }
     }
 

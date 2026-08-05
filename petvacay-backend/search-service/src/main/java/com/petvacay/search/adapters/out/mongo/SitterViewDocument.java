@@ -53,6 +53,13 @@ public class SitterViewDocument {
     private String photoUrl;
 
     /**
+     * Reservas confirmadas canceladas por el cuidador. Igual que {@code ratingSum},
+     * solo lo muta un {@code $inc} atomico y una reindexacion del catalogo no lo
+     * borra: es historial, no configuracion del perfil.
+     */
+    private int cancellationCount;
+
+    /**
      * Mascotas comprometidas por noche. Las claves de un mapa de Mongo deben ser
      * cadenas, asi que se usa la fecha en formato ISO-8601.
      */
@@ -70,6 +77,7 @@ public class SitterViewDocument {
         // modos — ver SitterProjectionHandler.onCuidadorIndexado).
         document.ratingSum = BigDecimal.ZERO;
         document.reviewCount = 0;
+        document.cancellationCount = 0;
         document.occupancyByDate = new HashMap<>();
         view.occupancyByDate().forEach((date, count) ->
                 document.occupancyByDate.put(date.toString(), count));
@@ -126,7 +134,8 @@ public class SitterViewDocument {
                 offeredServices.isEmpty() ? EnumSet.noneOf(ServiceType.class) : EnumSet.copyOf(offeredServices),
                 maxPetWeightKg,
                 photoUrl,
-                occupancy);
+                occupancy,
+                cancellationCount);
     }
 
     public UUID getSitterId() {

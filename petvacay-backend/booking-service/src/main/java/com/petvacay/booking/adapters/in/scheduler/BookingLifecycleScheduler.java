@@ -29,4 +29,27 @@ public class BookingLifecycleScheduler {
             log.info("{} solicitudes canceladas automaticamente por expiracion de 24h", expired);
         }
     }
+
+    /** Arranca el servicio de las reservas confirmadas cuya fecha de inicio ya llego. */
+    @Scheduled(fixedDelayString = "${petvacay.scheduler.advance-lifecycle-ms:300000}")
+    public void startDueBookings() {
+        int started = manageBooking.startDueBookings();
+        if (started > 0) {
+            log.info("{} reservas pasadas a EN_PROGRESO al alcanzar su fecha de inicio", started);
+        }
+    }
+
+    /**
+     * Libera el escrow de las reservas cuyo servicio termino hace mas de 24 horas
+     * sin disputa (negocio.md seccion 3.2). Sin esto el cuidador no cobra nunca
+     * por si solo: la transicion a FINALIZADO — y el evento que la liquidacion
+     * escucha — dependia de que alguien llamara al endpoint a mano.
+     */
+    @Scheduled(fixedDelayString = "${petvacay.scheduler.advance-lifecycle-ms:300000}")
+    public void releaseDuePayouts() {
+        int released = manageBooking.releaseDuePayouts();
+        if (released > 0) {
+            log.info("{} reservas finalizadas automaticamente; fondos liberados al cuidador", released);
+        }
+    }
 }

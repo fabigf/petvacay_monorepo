@@ -17,6 +17,8 @@ public interface BookingJpaRepository extends JpaRepository<BookingEntity, UUID>
 
     List<BookingEntity> findBySitterIdOrderByStartDateDesc(UUID sitterId);
 
+    List<BookingEntity> findByStatusOrderByStartDateDesc(BookingStatus status);
+
     /** Reservas del cuidador que solapan con [start, end) en los estados indicados. */
     @Query("""
             select b from BookingEntity b
@@ -31,4 +33,8 @@ public interface BookingJpaRepository extends JpaRepository<BookingEntity, UUID>
                                         @Param("statuses") Collection<BookingStatus> statuses);
 
     List<BookingEntity> findByStatusAndRequestedAtBefore(BookingStatus status, Instant threshold);
+
+    List<BookingEntity> findByStatusAndStartDateLessThanEqual(BookingStatus status, LocalDate date);
+
+    List<BookingEntity> findByStatusAndEndDateLessThanEqual(BookingStatus status, LocalDate date);
 }

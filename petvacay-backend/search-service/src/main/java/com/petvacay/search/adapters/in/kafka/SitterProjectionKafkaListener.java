@@ -60,6 +60,11 @@ public class SitterProjectionKafkaListener {
         handler.onReservaFinalizada(objectMapper.readValue(payload, BookingEvents.ReservaFinalizadaEvent.class));
     }
 
+    @KafkaListener(topics = BookingEvents.DisputaResueltaEvent.TOPIC, groupId = GROUP_ID)
+    public void onDisputaResuelta(String payload) throws Exception {
+        handler.onDisputaResuelta(objectMapper.readValue(payload, BookingEvents.DisputaResueltaEvent.class));
+    }
+
     @KafkaListener(topics = BookingEvents.ResenaCreadaEvent.TOPIC, groupId = GROUP_ID)
     public void onResenaCreada(String payload) throws Exception {
         handler.onResenaCreada(objectMapper.readValue(payload, BookingEvents.ResenaCreadaEvent.class));

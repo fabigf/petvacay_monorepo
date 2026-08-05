@@ -20,6 +20,12 @@ public record CancellationOutcome(
         /** Cliente cancela dentro de las 48h previas al inicio. */
         CLIENT_LATE,
         /** Cancela el cuidador: reembolso integro al cliente. */
-        SITTER_CANCELLED
+        SITTER_CANCELLED,
+        /**
+         * Un administrador resolvio una disputa (negocio.md 4.4). A diferencia de
+         * las demas, esta no la decide una politica automatica: el reparto sale de
+         * lo que dictamine el equipo tras analizar las pruebas.
+         */
+        DISPUTE_RESOLVED
     }
 }

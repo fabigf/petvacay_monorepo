@@ -4,6 +4,7 @@ import com.petvacay.booking.domain.model.Booking;
 import com.petvacay.booking.domain.model.BookingStatus;
 import com.petvacay.booking.domain.model.CancellationActor;
 import com.petvacay.booking.domain.model.CancellationOutcome;
+import com.petvacay.booking.domain.model.DisputeResolution;
 import com.petvacay.booking.domain.model.PricingBreakdown;
 import com.petvacay.booking.domain.model.ServiceType;
 import com.petvacay.shared.domain.DateRange;
@@ -114,6 +115,16 @@ public class BookingEntity {
     @Column(name = "dispute_reason", length = 2000)
     private String disputeReason;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "dispute_resolution")
+    private DisputeResolution disputeResolution;
+
+    @Column(name = "dispute_resolution_notes", length = 2000)
+    private String disputeResolutionNotes;
+
+    @Column(name = "dispute_resolved_by")
+    private UUID disputeResolvedBy;
+
     protected BookingEntity() {
     }
 
@@ -143,6 +154,9 @@ public class BookingEntity {
         entity.closedAt = booking.closedAt();
         entity.cancelledBy = booking.cancelledBy();
         entity.disputeReason = booking.disputeReason();
+        entity.disputeResolution = booking.disputeResolution();
+        entity.disputeResolutionNotes = booking.disputeResolutionNotes();
+        entity.disputeResolvedBy = booking.disputeResolvedBy();
 
         CancellationOutcome outcome = booking.cancellationOutcome();
         if (outcome != null) {
@@ -172,6 +186,7 @@ public class BookingEntity {
 
         return Booking.rehydrate(id, clientId, sitterId, List.copyOf(petIds),
                 DateRange.of(startDate, endDate), serviceType, new Money(pricePerNight, cur),
-                pricing, status, requestedAt, confirmedAt, closedAt, cancelledBy, outcome, disputeReason);
+                pricing, status, requestedAt, confirmedAt, closedAt, cancelledBy, outcome, disputeReason,
+                disputeResolution, disputeResolutionNotes, disputeResolvedBy);
     }
 }

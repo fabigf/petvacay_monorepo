@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { logout as logoutRequest } from '@/modules/auth/authApi'
 import { useAuthStore } from '@/core/security/authStore'
+import { NotificationBell } from '@/modules/notifications/NotificationBell'
 import { Button } from '@/shared/components/ui'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -14,6 +15,7 @@ export function AppLayout() {
   const profile = useAuthStore((state) => state.profile)
   const logout = useAuthStore((state) => state.logout)
   const isSitter = profile?.roles.includes('ROLE_SITTER') ?? false
+  const isAdmin = profile?.roles.includes('ROLE_ADMIN') ?? false
 
   const handleLogout = async () => {
     // Primero el servidor (revoca la familia de tokens), luego el estado local.
@@ -54,11 +56,17 @@ export function AppLayout() {
                 Mi perfil de cuidador
               </NavLink>
             )}
+            {isAdmin && (
+              <NavLink to="/admin" className={navLinkClass}>
+                Administración
+              </NavLink>
+            )}
           </nav>
 
           <div className="flex items-center gap-2">
             {profile ? (
               <>
+                <NotificationBell />
                 <span className="hidden text-sm text-slate-600 sm:inline">
                   Hola, {profile.firstName}
                 </span>

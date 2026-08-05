@@ -3,10 +3,13 @@ package com.petvacay.booking.adapters.in.web;
 import com.petvacay.booking.domain.model.Booking;
 import com.petvacay.booking.domain.model.BookingStatus;
 import com.petvacay.booking.domain.model.CancellationActor;
+import com.petvacay.booking.domain.model.DisputeResolution;
 import com.petvacay.booking.domain.model.ServiceType;
 import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -61,7 +64,9 @@ public final class BookingDtos {
             Instant scheduledPayoutAt,
             CancellationActor cancelledBy,
             BigDecimal refundToClient,
-            String disputeReason) {
+            String disputeReason,
+            DisputeResolution disputeResolution,
+            String disputeResolutionNotes) {
 
         public static BookingDetailResponse from(Booking booking) {
             return new BookingDetailResponse(
@@ -88,10 +93,27 @@ public final class BookingDtos {
                     booking.cancelledBy(),
                     booking.cancellationOutcome() == null
                             ? null : booking.cancellationOutcome().refundToClient().amount(),
-                    booking.disputeReason());
+                    booking.disputeReason(),
+                    booking.disputeResolution(),
+                    booking.disputeResolutionNotes());
         }
     }
 
+    public record PetEmergencyRequest(
+            @NotBlank(message = "Describe brevemente qué le ocurre a la mascota") String description) {
+    }
+
     public record OpenDisputeRequest(@NotNull(message = "El motivo es obligatorio") String reason) {
+    }
+
+    /**
+     * Resolucion manual de una disputa. {@code refundToClient} solo se lee cuando
+     * la resolucion es {@code SPLIT}: en los dos extremos el importe lo deduce el
+     * servidor de lo que realmente se cobro.
+     */
+    public record ResolveDisputeRequest(
+            @NotNull(message = "La resolución es obligatoria") DisputeResolution resolution,
+            @PositiveOrZero(message = "El reembolso no puede ser negativo") BigDecimal refundToClient,
+            @NotBlank(message = "Hay que dejar constancia del motivo de la resolución") String notes) {
     }
 }

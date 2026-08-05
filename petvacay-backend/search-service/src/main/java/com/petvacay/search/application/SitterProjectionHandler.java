@@ -70,7 +70,8 @@ public class SitterProjectionHandler {
                 event.servicePrices().keySet(),
                 event.maxPetWeightKg(),
                 event.photoUrl(),
-                existing != null ? new HashMap<>(existing.occupancyByDate()) : new HashMap<>()));
+                existing != null ? new HashMap<>(existing.occupancyByDate()) : new HashMap<>(),
+                existing != null ? existing.cancellationCount() : 0));
 
         log.info("Vista de busqueda indexada para el cuidador {}", event.sitterId());
     }
@@ -94,9 +95,26 @@ public class SitterProjectionHandler {
             return;
         }
         readModel.releaseDates(event.sitterId(), event.dates().start(), event.dates().end(), event.petCount());
+
+        // Dejar colgado a un cliente con la reserva ya pagada penaliza la posicion
+        // del cuidador en el listado (negocio.md 4.3). La resena negativa que
+        // acompana a la penalizacion llega aparte, como ResenaCreadaEvent.
+        if (event.outcome().policyApplied() == CancellationOutcome.CancellationPolicyKind.SITTER_CANCELLED) {
+            readModel.recordSitterCancellation(event.sitterId());
+        }
     }
 
     public void onReservaFinalizada(BookingEvents.ReservaFinalizadaEvent event) {
+        readModel.releaseDates(event.sitterId(), event.dates().start(), event.dates().end(), event.petCount());
+    }
+
+    /**
+     * Una disputa mantiene el calendario bloqueado mientras dura; al resolverla
+     * hay que liberarlo, igual que en una finalizacion normal. Sin esto, las
+     * fechas de una reserva que acabo en disputa se quedarian ocupadas para
+     * siempre en el buscador.
+     */
+    public void onDisputaResuelta(BookingEvents.DisputaResueltaEvent event) {
         readModel.releaseDates(event.sitterId(), event.dates().start(), event.dates().end(), event.petCount());
     }
 

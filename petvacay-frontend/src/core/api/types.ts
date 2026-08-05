@@ -38,6 +38,8 @@ export interface SitterSearchResult {
   photoUrl?: string
   acceptedSpecies: Species[]
   offeredServices: ServiceType[]
+  /** Mascotas que puede atender a la vez; el buscador ya lo usaba para filtrar. */
+  maxSimultaneousPets: number
 }
 
 export interface GeocodeResult {
@@ -94,6 +96,8 @@ export interface BookingDetail {
   cancelledBy?: 'CLIENT' | 'SITTER' | 'SYSTEM'
   refundToClient?: number
   disputeReason?: string
+  disputeResolution?: DisputeResolution
+  disputeResolutionNotes?: string
 }
 
 export interface Pet {
@@ -148,7 +152,8 @@ export interface SitterProfile {
   verifiedAt?: string
 }
 
-export type ReviewAuthorRole = 'CLIENT' | 'SITTER'
+/** SYSTEM es la reseña negativa automática por cancelar el cuidador (negocio.md 4.3). */
+export type ReviewAuthorRole = 'CLIENT' | 'SITTER' | 'SYSTEM'
 
 export interface Review {
   reviewId: string
@@ -160,6 +165,31 @@ export interface Review {
   comment?: string
   createdAt: string
 }
+
+/** Tipos de aviso de la campana; el texto ya viene redactado del backend. */
+export type NotificationType =
+  | 'BOOKING_REQUESTED'
+  | 'BOOKING_ACCEPTED'
+  | 'BOOKING_REJECTED'
+  | 'BOOKING_CONFIRMED'
+  | 'BOOKING_CANCELLED'
+  | 'BOOKING_FINISHED'
+  | 'DISPUTE_OPENED'
+  | 'DISPUTE_RESOLVED'
+  | 'PET_EMERGENCY'
+
+export interface Notification {
+  notificationId: string
+  type: NotificationType
+  title: string
+  body?: string
+  bookingId?: string
+  createdAt: string
+  unread: boolean
+}
+
+/** Resolución manual de una disputa por el equipo de administración (negocio.md 4.4). */
+export type DisputeResolution = 'FAVOR_CLIENT' | 'FAVOR_SITTER' | 'SPLIT'
 
 /** Formato RFC 7807 devuelto por el backend (especificaciones.md 4). */
 export interface ProblemDetails {

@@ -6,13 +6,21 @@ import {
   confirmPayment,
   getBooking,
   openDispute,
+  raisePetEmergency,
 } from './bookingsApi'
 import { BookingStatusBadge } from './BookingStatusBadge'
 import { createPaymentIntent } from './paymentsApi'
 import { StripePaymentForm } from './StripePaymentForm'
 import { leaveReview, listReviewsForBooking, listReviewsForSitter } from '@/modules/reviews/reviewsApi'
 import { getSitterProfile } from '@/modules/onboarding/onboardingApi'
-import type { BookingDetail, HomeType, Review, ServiceType, SitterProfile } from '@/core/api/types'
+import type {
+  BookingDetail,
+  HomeType,
+  Review,
+  ReviewAuthorRole,
+  ServiceType,
+  SitterProfile,
+} from '@/core/api/types'
 import { Button, Card, Field, Input, ProcessingNotice, Skeleton } from '@/shared/components/ui'
 import { StarRating } from '@/shared/components/StarRating'
 import { useAuthStore } from '@/core/security/authStore'
@@ -22,6 +30,13 @@ const serviceTypeLabels: Record<ServiceType, string> = {
   NIGHT_ACCOMMODATION: 'Alojamiento nocturno',
   DAY_CARE: 'Guardería de día',
   WALKING: 'Paseos por horas',
+}
+
+/** SYSTEM es la reseña que deja la plataforma al cancelar el cuidador. */
+const reviewAuthorLabels: Record<ReviewAuthorRole, string> = {
+  CLIENT: 'Del cliente',
+  SITTER: 'Del cuidador',
+  SYSTEM: 'Automática del sistema',
 }
 
 const homeTypeLabels: Record<HomeType, string> = {
@@ -52,6 +67,7 @@ export function BookingDetailPage() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [disputeReason, setDisputeReason] = useState('')
+  const [emergencyDescription, setEmergencyDescription] = useState('')
   // El pago dispara PagoConfirmadoEvent, que bloquea el calendario del cuidador en
   // el buscador vía el proyector de Kafka: ese efecto no es instantáneo.
   const [justConfirmedPayment, setJustConfirmedPayment] = useState(false)
@@ -182,6 +198,7 @@ export function BookingDetailPage() {
   if (!booking) return null
 
   const isClient = booking.clientId === userId
+  const isSitter = booking.sitterId === userId
   const currency = booking.currency === 'EUR' ? '€' : booking.currency
 
   // Una reserva terminada o congelada por una disputa ya no admite cancelación:
@@ -285,6 +302,26 @@ export function BookingDetailPage() {
           </Card>
         )}
 
+        {/* Una disputa resuelta deja la reserva en FINALIZADO, así que sin esto
+            no quedaría ni rastro en pantalla de que hubo incidencia ni de cómo
+            acabó — solo el aviso de la campana, que se pierde al leerlo. */}
+        {booking.disputeResolution && (
+          <Card className="border-sand-300 bg-sand-50">
+            <h2 className="mb-1 font-semibold text-slate-800">Incidencia resuelta</h2>
+            {booking.disputeReason && (
+              <p className="text-sm text-slate-600">Motivo original: {booking.disputeReason}</p>
+            )}
+            {booking.disputeResolutionNotes && (
+              <p className="mt-1 text-sm text-slate-700">{booking.disputeResolutionNotes}</p>
+            )}
+            {booking.refundToClient !== undefined && (
+              <p className="mt-2 text-sm text-slate-600">
+                Reembolso al cliente: {booking.refundToClient.toFixed(2)} {currency}
+              </p>
+            )}
+          </Card>
+        )}
+
         {/* Acciones disponibles según el estado actual de la máquina de estados */}
         <Card>
           <SectionTitle>Acciones</SectionTitle>
@@ -360,6 +397,41 @@ export function BookingDetailPage() {
           </Card>
         )}
 
+        {/* El equivalente del cuidador: no congela el pago ni abre expediente,
+            avisa al dueño de inmediato (negocio.md 5, MascotaEnPeligroEvent). */}
+        {isSitter && (booking.status === 'CONFIRMADO' || booking.status === 'EN_PROGRESO') && (
+          <Card>
+            <SectionTitle>Alerta médica</SectionTitle>
+            <form
+              className="flex flex-col gap-3"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void run(
+                  () => raisePetEmergency(booking.bookingId, emergencyDescription),
+                  'Alerta enviada al dueño y al equipo de soporte',
+                )
+              }}
+            >
+              <Field
+                label="¿Le ocurre algo a la mascota?"
+                htmlFor="emergencyDescription"
+                hint="Avisa al dueño al instante y pone sobre aviso al equipo de soporte. No afecta al pago."
+              >
+                <Input
+                  id="emergencyDescription"
+                  required
+                  value={emergencyDescription}
+                  placeholder="Cojea de la pata trasera, no come desde ayer..."
+                  onChange={(e) => setEmergencyDescription(e.target.value)}
+                />
+              </Field>
+              <Button type="submit" variant="danger" loading={busy}>
+                Dar alerta médica
+              </Button>
+            </form>
+          </Card>
+        )}
+
         {booking.status === 'FINALIZADO' && (
           <Card>
             <SectionTitle>Reseñas</SectionTitle>
@@ -369,7 +441,7 @@ export function BookingDetailPage() {
                   <div key={review.reviewId} className="rounded-lg border border-sand-200 p-3">
                     <div className="mb-1 flex items-center justify-between">
                       <span className="text-xs font-medium text-slate-500">
-                        {review.authorRole === 'CLIENT' ? 'Del cliente' : 'Del cuidador'}
+                        {reviewAuthorLabels[review.authorRole]}
                       </span>
                       <StarRating value={review.rating} size="sm" />
                     </div>

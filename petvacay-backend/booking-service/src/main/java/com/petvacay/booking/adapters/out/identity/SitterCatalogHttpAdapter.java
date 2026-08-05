@@ -7,9 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
@@ -56,7 +53,7 @@ public class SitterCatalogHttpAdapter implements SitterCatalogPort {
         try {
             SitterSummaryResponse response = restClient.get()
                     .uri("/api/v1/internal/sitters/{id}/summary", sitterId)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + currentToken())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + PropagatedUserToken.current())
                     .retrieve()
                     .body(SitterSummaryResponse.class);
             return Optional.ofNullable(response).map(this::toDomain);
@@ -66,27 +63,6 @@ public class SitterCatalogHttpAdapter implements SitterCatalogPort {
             log.error("No se pudo consultar identity-service para el cuidador {}", sitterId, e);
             return Optional.empty();
         }
-    }
-
-    /**
-     * Propaga el token del usuario que origino la peticion, en lugar de usar una
-     * credencial propia del servicio.
-     *
-     * <p>Se eligio asi porque mantiene la trazabilidad de extremo a extremo (en los
-     * logs de identity-service consta en nombre de quien se hizo la consulta) y
-     * evita introducir un segundo mecanismo de credenciales para maquinas. El
-     * limite conocido es que solo funciona dentro del contexto de una peticion de
-     * usuario; si en el futuro un proceso en segundo plano necesitara consultar el
-     * catalogo — por ejemplo el scheduler de expiracion — habria que anadir un
-     * flujo client-credentials para ese caso.
-     */
-    private String currentToken() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication instanceof JwtAuthenticationToken jwtAuthentication) {
-            return jwtAuthentication.getToken().getTokenValue();
-        }
-        throw new IllegalStateException(
-                "No hay un JWT en el contexto de seguridad: identity-service rechazaria la consulta.");
     }
 
     private SitterSummary toDomain(SitterSummaryResponse response) {

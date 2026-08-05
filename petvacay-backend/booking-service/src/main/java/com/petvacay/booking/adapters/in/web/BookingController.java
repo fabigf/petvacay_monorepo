@@ -4,6 +4,7 @@ import com.petvacay.booking.adapters.in.web.BookingDtos.BookingDetailResponse;
 import com.petvacay.booking.adapters.in.web.BookingDtos.CreateBookingRequest;
 import com.petvacay.booking.adapters.in.web.BookingDtos.CreateBookingResponse;
 import com.petvacay.booking.adapters.in.web.BookingDtos.OpenDisputeRequest;
+import com.petvacay.booking.adapters.in.web.BookingDtos.PetEmergencyRequest;
 import com.petvacay.booking.domain.model.Booking;
 import com.petvacay.booking.ports.in.CreateBookingUseCase;
 import com.petvacay.booking.ports.in.ManageBookingUseCase;
@@ -119,6 +120,19 @@ public class BookingController {
     public BookingDetailResponse cancel(@PathVariable UUID bookingId,
                                         @AuthenticatedUser UUID actingUserId) {
         return BookingDetailResponse.from(manageBooking.cancel(bookingId, actingUserId));
+    }
+
+    /**
+     * Botón de alerta médica (negocio.md 5). Devuelve la reserva sin cambios de
+     * estado: la alerta no altera el ciclo de vida, solo dispara el aviso urgente
+     * al dueño y al equipo de soporte.
+     */
+    @PostMapping("/{bookingId}/emergency")
+    public BookingDetailResponse raiseEmergency(@PathVariable UUID bookingId,
+                                                @AuthenticatedUser UUID actingUserId,
+                                                @Valid @RequestBody PetEmergencyRequest request) {
+        return BookingDetailResponse.from(
+                manageBooking.raisePetEmergency(bookingId, actingUserId, request.description()));
     }
 
     @PostMapping("/{bookingId}/disputes")

@@ -1,5 +1,6 @@
 package com.petvacay.booking.domain.model;
 
+import com.petvacay.shared.domain.BusinessRuleViolationException;
 import com.petvacay.shared.domain.Money;
 
 import java.time.Duration;
@@ -70,6 +71,46 @@ public final class CancellationPolicy {
                 refund,
                 firstNight.minus(commissionOnFirstNight),
                 pricing.clientServiceFee().plus(commissionOnFirstNight));
+    }
+
+    /**
+     * Reparte el escrow congelado segun lo que dictamine el administrador
+     * (negocio.md 4.4). El unico dato libre es cuanto se le devuelve al cliente;
+     * el resto se liquida con las mismas reglas de siempre:
+     * <ul>
+     *   <li>la tasa de gestion del 5% se devenga primero, igual que en cualquier
+     *       cancelacion imputable al cliente;</li>
+     *   <li>sobre lo que quede para el cuidador se aplica la retencion del 15%.</li>
+     * </ul>
+     *
+     * <p>Con este calculo los dos extremos salen solos y son coherentes con el
+     * resto de la plataforma: devolver el total deja a cuidador y plataforma a
+     * cero, y no devolver nada produce exactamente el mismo reparto que una
+     * reserva finalizada sin incidencias.
+     */
+    public static CancellationOutcome resolveDispute(Booking booking, Money refundToClient) {
+        PricingBreakdown pricing = booking.pricing();
+
+        if (refundToClient.isNegative() || refundToClient.compareTo(pricing.totalChargedToClient()) > 0) {
+            throw BusinessRuleViolationException.unprocessable(
+                    "ERR_DISPUTE_REFUND_OUT_OF_RANGE", "Reembolso fuera de rango",
+                    "El reembolso de una disputa no puede ser negativo ni superar lo que pagó el cliente ("
+                            + pricing.totalChargedToClient() + ").");
+        }
+
+        Money remainder = pricing.totalChargedToClient().minus(refundToClient);
+        Money platformFee = remainder.compareTo(pricing.clientServiceFee()) < 0
+                ? remainder
+                : pricing.clientServiceFee();
+
+        Money sitterGross = remainder.minus(platformFee);
+        Money commission = sitterGross.percentage(PricingPolicy.SITTER_COMMISSION_RATE);
+
+        return new CancellationOutcome(
+                CancellationOutcome.CancellationPolicyKind.DISPUTE_RESOLVED,
+                refundToClient,
+                sitterGross.minus(commission),
+                platformFee.plus(commission));
     }
 
     private static boolean isEarly(Booking booking, Instant now) {

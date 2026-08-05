@@ -113,6 +113,12 @@ public class MongoSitterReadModelAdapter implements SitterReadModelPort {
                 update, SitterViewDocument.class);
     }
 
+    @Override
+    public void recordSitterCancellation(UUID sitterId) {
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(sitterId)),
+                new Update().inc("cancellationCount", 1), SitterViewDocument.class);
+    }
+
     /** Un unico {@code $inc} por noche, atomico respecto a otros consumidores. */
     private void applyOccupancyDelta(UUID sitterId, LocalDate start, LocalDate end, int delta) {
         if (delta == 0) {

@@ -107,9 +107,36 @@ public class SettlementHandler {
             return;
         }
 
-        appendIfPositive(event, LedgerEntryType.CLIENT_REFUND, event.clientId(), outcome.refundToClient());
-        appendIfPositive(event, LedgerEntryType.SITTER_COMPENSATION, event.sitterId(), outcome.payoutToSitter());
-        appendIfPositive(event, LedgerEntryType.PLATFORM_REVENUE, null, outcome.platformRevenue());
+        appendIfPositive(event.bookingId(), event.occurredAt(),
+                LedgerEntryType.CLIENT_REFUND, event.clientId(), outcome.refundToClient());
+        appendIfPositive(event.bookingId(), event.occurredAt(),
+                LedgerEntryType.SITTER_COMPENSATION, event.sitterId(), outcome.payoutToSitter());
+        appendIfPositive(event.bookingId(), event.occurredAt(),
+                LedgerEntryType.PLATFORM_REVENUE, null, outcome.platformRevenue());
+    }
+
+    /**
+     * Disputa resuelta por un administrador: descongela el escrow con el reparto
+     * que dictamino, sea cual sea. Es el unico camino por el que el dinero de una
+     * reserva en disputa vuelve a moverse — hasta ahora se quedaba retenido
+     * indefinidamente porque nada sacaba la reserva de EN_DISPUTA.
+     */
+    @Transactional
+    public void onDisputaResuelta(BookingEvents.DisputaResueltaEvent event) {
+        if (isDuplicate(event.eventId(), event.eventName())) {
+            return;
+        }
+
+        CancellationOutcome outcome = event.outcome();
+        appendIfPositive(event.bookingId(), event.occurredAt(),
+                LedgerEntryType.CLIENT_REFUND, event.clientId(), outcome.refundToClient());
+        appendIfPositive(event.bookingId(), event.occurredAt(),
+                LedgerEntryType.SITTER_PAYOUT, event.sitterId(), outcome.payoutToSitter());
+        appendIfPositive(event.bookingId(), event.occurredAt(),
+                LedgerEntryType.PLATFORM_REVENUE, null, outcome.platformRevenue());
+        log.info("Disputa de la reserva {} resuelta ({}): cliente {} / cuidador {} / plataforma {}",
+                event.bookingId(), event.resolution(), outcome.refundToClient(),
+                outcome.payoutToSitter(), outcome.platformRevenue());
     }
 
     /**
@@ -126,11 +153,11 @@ public class SettlementHandler {
         return !processedEvents.markProcessed(eventId, eventName);
     }
 
-    private void appendIfPositive(BookingEvents.ReservaCanceladaEvent event, LedgerEntryType type,
+    private void appendIfPositive(UUID bookingId, java.time.Instant occurredAt, LedgerEntryType type,
                                   UUID counterparty, Money amount) {
         if (amount == null || amount.isZero()) {
             return;
         }
-        ledger.append(LedgerEntry.of(event.bookingId(), type, counterparty, amount, event.occurredAt()));
+        ledger.append(LedgerEntry.of(bookingId, type, counterparty, amount, occurredAt));
     }
 }

@@ -40,6 +40,10 @@ public class SecurityConfig {
                         // publica en produccion): exigir JWT aqui no anade seguridad real.
                         .requestMatchers("/actuator/health/**", "/actuator/prometheus").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/reviews/sitters/**").permitAll()
+                        // Back-office: resolver disputas y listar reservas por estado
+                        // atraviesan a proposito la comprobacion de "ser parte de la
+                        // reserva", asi que su unica barrera es el rol.
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))

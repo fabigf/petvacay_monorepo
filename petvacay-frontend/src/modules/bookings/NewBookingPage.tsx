@@ -166,7 +166,7 @@ export function NewBookingPage() {
           {reviews.length > 0 && (
             <div className="mt-4 flex flex-col gap-2 border-t border-sand-200 pt-4">
               {reviews
-                .filter((r) => r.authorRole === 'CLIENT')
+                .filter((r) => r.authorRole !== 'SITTER')
                 .slice(0, 5)
                 .map((review) => (
                   <div key={review.reviewId} className="text-sm">

@@ -10,6 +10,7 @@ import com.petvacay.identity.adapters.in.web.IdentityDtos.RejectSitterRequest;
 import com.petvacay.identity.adapters.in.web.IdentityDtos.SitterProfileResponse;
 import com.petvacay.identity.adapters.in.web.IdentityDtos.SubmitDocumentRequest;
 import com.petvacay.identity.adapters.in.web.IdentityDtos.UserResponse;
+import com.petvacay.identity.domain.model.Pet;
 import com.petvacay.identity.domain.model.ServiceType;
 import com.petvacay.identity.ports.in.IdentityUseCases.LoginUseCase;
 import com.petvacay.identity.ports.in.IdentityUseCases.ManagePetsUseCase;
@@ -17,6 +18,7 @@ import com.petvacay.identity.ports.in.IdentityUseCases.QueryUserUseCase;
 import com.petvacay.identity.ports.in.IdentityUseCases.RegisterUserUseCase;
 import com.petvacay.identity.ports.in.IdentityUseCases.SitterOnboardingUseCase;
 import com.petvacay.identity.ports.in.IdentityUseCases.SitterVerificationUseCase;
+import com.petvacay.identity.ports.in.IdentityUseCases.UserModerationUseCase;
 import com.petvacay.shared.domain.BusinessRuleViolationException;
 import com.petvacay.shared.security.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
@@ -61,6 +63,7 @@ public class IdentityController {
     private final ManagePetsUseCase managePets;
     private final SitterOnboardingUseCase sitterOnboarding;
     private final SitterVerificationUseCase sitterVerification;
+    private final UserModerationUseCase userModeration;
     private final RefreshTokenCookies refreshCookies;
 
     public IdentityController(RegisterUserUseCase registerUser,
@@ -69,7 +72,9 @@ public class IdentityController {
                               ManagePetsUseCase managePets,
                               SitterOnboardingUseCase sitterOnboarding,
                               SitterVerificationUseCase sitterVerification,
+                              UserModerationUseCase userModeration,
                               RefreshTokenCookies refreshCookies) {
+        this.userModeration = userModeration;
         this.registerUser = registerUser;
         this.login = login;
         this.queryUser = queryUser;
@@ -221,6 +226,17 @@ public class IdentityController {
                 servicePrices, profile.maxSimultaneousPets());
     }
 
+    /**
+     * Identificadores de las mascotas de un usuario, para que booking-service
+     * pueda comprobar que quien reserva es realmente su dueno. Devuelve solo los
+     * identificadores a proposito: la ficha completa (salud, dieta) es un dato
+     * sensible que el servicio de reservas no necesita para esa comprobacion.
+     */
+    @GetMapping("/internal/users/{ownerId}/pet-ids")
+    public List<UUID> petIds(@PathVariable UUID ownerId) {
+        return managePets.listPets(ownerId).stream().map(Pet::id).toList();
+    }
+
     public record SitterSummaryResponse(
             UUID sitterId,
             String firstName,
@@ -257,5 +273,15 @@ public class IdentityController {
     public SitterProfileResponse reject(@PathVariable UUID sitterId,
                                         @Valid @RequestBody RejectSitterRequest request) {
         return SitterProfileResponse.from(sitterVerification.reject(sitterId, request.reason()));
+    }
+
+    /**
+     * Expulsion fulminante (negocio.md 2.3). El dominio tenia el metodo
+     * {@code UserAccount.deactivate()} desde la Fase 1 y el login ya rechazaba a
+     * las cuentas inactivas, pero nada llamaba nunca a ese metodo.
+     */
+    @PostMapping("/admin/users/{userId}/deactivate")
+    public UserResponse deactivate(@PathVariable UUID userId) {
+        return UserResponse.from(userModeration.deactivate(userId));
     }
 }

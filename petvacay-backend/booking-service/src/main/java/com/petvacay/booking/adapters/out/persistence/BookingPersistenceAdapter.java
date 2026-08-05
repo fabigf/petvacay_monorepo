@@ -7,6 +7,8 @@ import com.petvacay.shared.domain.DateRange;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -49,6 +51,12 @@ public class BookingPersistenceAdapter implements BookingRepositoryPort {
     }
 
     @Override
+    public List<Booking> findByStatus(BookingStatus status) {
+        return repository.findByStatusOrderByStartDateDesc(status).stream()
+                .map(BookingEntity::toDomain).toList();
+    }
+
+    @Override
     public List<Booking> findCalendarBlockingBookings(UUID sitterId, DateRange range) {
         return repository.findOverlapping(sitterId, range.start(), range.end(), CALENDAR_BLOCKING).stream()
                 .map(BookingEntity::toDomain).toList();
@@ -59,5 +67,27 @@ public class BookingPersistenceAdapter implements BookingRepositoryPort {
         Instant threshold = now.minus(Booking.REQUEST_EXPIRY);
         return repository.findByStatusAndRequestedAtBefore(BookingStatus.SOLICITADO, threshold).stream()
                 .map(BookingEntity::toDomain).toList();
+    }
+
+    @Override
+    public List<Booking> findBookingsDueToStart(LocalDate today) {
+        return repository.findByStatusAndStartDateLessThanEqual(BookingStatus.CONFIRMADO, today).stream()
+                .map(BookingEntity::toDomain).toList();
+    }
+
+    /**
+     * El filtro en SQL es por fecha de fin, deliberadamente mas ancho que la regla
+     * real (fin + 24h): la frontera exacta la vuelve a comprobar el dominio en
+     * {@code Booking.complete()}, que es donde vive. Una reserva EN_DISPUTA nunca
+     * entra aqui porque el filtro exige EN_PROGRESO, que es justo lo que congela
+     * la disputa.
+     */
+    @Override
+    public List<Booking> findBookingsDueForPayout(Instant now) {
+        LocalDate endedBefore = LocalDate.ofInstant(now.minus(Booking.PAYOUT_HOLD_WINDOW), ZoneOffset.UTC);
+        return repository.findByStatusAndEndDateLessThanEqual(BookingStatus.EN_PROGRESO, endedBefore).stream()
+                .map(BookingEntity::toDomain)
+                .filter(booking -> !now.isBefore(booking.scheduledPayoutAt()))
+                .toList();
     }
 }

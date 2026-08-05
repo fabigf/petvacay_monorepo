@@ -58,6 +58,24 @@ export async function cancelBooking(bookingId: string): Promise<BookingDetail> {
   return data
 }
 
+/**
+ * Botón de alerta médica del cuidador (negocio.md 5, `MascotaEnPeligroEvent`).
+ *
+ * No cambia el estado de la reserva: avisa de inmediato al dueño y al equipo de
+ * soporte. Deliberadamente distinto de abrir una incidencia, que sí congela el
+ * pago — castigar económicamente al cuidador por dar la alarma sería justo el
+ * incentivo contrario al que se busca.
+ */
+export async function raisePetEmergency(
+  bookingId: string,
+  description: string,
+): Promise<BookingDetail> {
+  const { data } = await apiClient.post<BookingDetail>(`/bookings/${bookingId}/emergency`, {
+    description,
+  })
+  return data
+}
+
 export async function openDispute(bookingId: string, reason: string): Promise<BookingDetail> {
   const { data } = await apiClient.post<BookingDetail>(`/bookings/${bookingId}/disputes`, {
     reason,

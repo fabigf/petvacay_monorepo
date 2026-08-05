@@ -23,6 +23,9 @@ petvacay:
   scheduler:
     # Frecuencia del barrido de solicitudes caducadas (24h sin respuesta del cuidador)
     expire-requests-ms: 300000
+    # Frecuencia del avance automatico del ciclo de vida: inicio del servicio al
+    # llegar su fecha y liberacion del escrow 24h despues de terminarlo.
+    advance-lifecycle-ms: 300000
   messaging:
     provider: spring
   services:

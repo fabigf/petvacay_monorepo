@@ -3,6 +3,7 @@ package com.petvacay.booking;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.petvacay.booking.domain.model.ServiceType;
+import com.petvacay.booking.ports.out.ClientPetsPort;
 import com.petvacay.booking.ports.out.SitterCatalogPort;
 import com.petvacay.shared.domain.Money;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +25,7 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,6 +62,9 @@ class BookingServiceIntegrationTest {
     @Autowired
     private FakeSitterCatalog sitterCatalog;
 
+    @Autowired
+    private FakeClientPets clientPets;
+
     private final UUID clientId = UUID.randomUUID();
     private final UUID petId = UUID.randomUUID();
     private UUID sitterId;
@@ -71,6 +76,28 @@ class BookingServiceIntegrationTest {
     void setUp() {
         sitterId = UUID.randomUUID();
         sitterCatalog.register(sitterId, "Carlos", true, "25.00", 1);
+        clientPets.register(clientId, petId);
+    }
+
+    @Test
+    @DisplayName("no deja reservar con la mascota de otra persona")
+    void cannotBookWithSomeoneElsesPet() throws Exception {
+        String payload = """
+                {
+                  "sitterId": "%s",
+                  "petIds": ["%s"],
+                  "startDate": "%s",
+                  "endDate": "%s",
+                  "serviceType": "NIGHT_ACCOMMODATION"
+                }
+                """.formatted(sitterId, UUID.randomUUID(), startDate, endDate);
+
+        mockMvc.perform(post("/api/v1/bookings")
+                        .with(asClient())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ERR_PET_NOT_OWNED"));
     }
 
     @Test
@@ -312,6 +339,94 @@ class BookingServiceIntegrationTest {
                 .andExpect(jsonPath("$.refundToClient").value(175.00));
     }
 
+    @Test
+    @DisplayName("la solicitud deja un aviso al cuidador y aceptarla deja otro al cliente")
+    void bookingTransitionsFeedTheNotificationBell() throws Exception {
+        MvcResult created = mockMvc.perform(post("/api/v1/bookings")
+                        .with(asClient())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bookingPayload()))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String bookingId = readJson(created).get("bookingId").asText();
+
+        mockMvc.perform(get("/api/v1/notifications").with(asSitter()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].type").value("BOOKING_REQUESTED"))
+                .andExpect(jsonPath("$[0].unread").value(true));
+
+        mockMvc.perform(post("/api/v1/bookings/" + bookingId + "/accept").with(asSitter()))
+                .andExpect(status().isOk());
+
+        MvcResult clientFeed = mockMvc.perform(get("/api/v1/notifications").with(asClient()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].type").value("BOOKING_ACCEPTED"))
+                .andReturn();
+
+        String notificationId = readJson(clientFeed).get(0).get("notificationId").asText();
+        mockMvc.perform(post("/api/v1/notifications/" + notificationId + "/read").with(asClient()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.unread").value(false));
+
+        // El buzon es de cada uno: el aviso del cliente no lo puede leer nadie mas.
+        mockMvc.perform(post("/api/v1/notifications/" + notificationId + "/read").with(asStranger()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ERR_NOT_NOTIFICATION_RECIPIENT"));
+    }
+
+    @Test
+    @DisplayName("la alerta médica del cuidador avisa al dueño sin tocar el estado de la reserva")
+    void petEmergencyNotifiesTheOwner() throws Exception {
+        String bookingId = createConfirmedBooking();
+
+        mockMvc.perform(post("/api/v1/bookings/" + bookingId + "/emergency")
+                        .with(asSitter())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"Cojea de la pata trasera\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMADO"));
+
+        mockMvc.perform(get("/api/v1/notifications").with(asClient()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].type").value("PET_EMERGENCY"));
+
+        // Solo el cuidador tiene el boton: es quien esta con el animal.
+        mockMvc.perform(post("/api/v1/bookings/" + bookingId + "/emergency")
+                        .with(asClient())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"prueba\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("cancelar una reserva confirmada le cuesta al cuidador una reseña de 1 estrella del sistema")
+    void sitterCancellationCreatesSystemReview() throws Exception {
+        String bookingId = createConfirmedBooking();
+
+        mockMvc.perform(post("/api/v1/bookings/" + bookingId + "/cancel").with(asSitter()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELADO"));
+
+        mockMvc.perform(get("/api/v1/reviews/sitters/" + sitterId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].authorRole").value("SYSTEM"))
+                .andExpect(jsonPath("$[0].rating").value(1));
+    }
+
+    @Test
+    @DisplayName("cancelar el cliente no genera ninguna reseña automatica contra el cuidador")
+    void clientCancellationDoesNotPenalizeSitter() throws Exception {
+        String bookingId = createConfirmedBooking();
+
+        mockMvc.perform(post("/api/v1/bookings/" + bookingId + "/cancel").with(asClient()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/reviews/sitters/" + sitterId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
     /** Reserva confirmada y pagada, punto de partida de las pruebas de cancelacion. */
     private String createConfirmedBooking() throws Exception {
         MvcResult created = mockMvc.perform(post("/api/v1/bookings")
@@ -373,6 +488,31 @@ class BookingServiceIntegrationTest {
         @Primary
         FakeSitterCatalog fakeSitterCatalog() {
             return new FakeSitterCatalog();
+        }
+
+        @Bean
+        @Primary
+        FakeClientPets fakeClientPets() {
+            return new FakeClientPets();
+        }
+    }
+
+    /**
+     * Doble de prueba de {@link ClientPetsPort}, por el mismo motivo que
+     * {@link FakeSitterCatalog}: la propiedad de las mascotas la resuelve
+     * identity-service por HTTP y este test corre en solitario.
+     */
+    static class FakeClientPets implements ClientPetsPort {
+
+        private final Map<UUID, Set<UUID>> petsByOwner = new HashMap<>();
+
+        void register(UUID ownerId, UUID... petIds) {
+            petsByOwner.put(ownerId, Set.of(petIds));
+        }
+
+        @Override
+        public Set<UUID> petsOwnedBy(UUID ownerId) {
+            return petsByOwner.getOrDefault(ownerId, Set.of());
         }
     }
 

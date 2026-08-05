@@ -34,7 +34,32 @@ public record SitterView(
         Set<ServiceType> offeredServices,
         BigDecimal maxPetWeightKg,
         String photoUrl,
-        Map<LocalDate, Integer> occupancyByDate) {
+        Map<LocalDate, Integer> occupancyByDate,
+        /** Reservas ya confirmadas que este cuidador ha cancelado (negocio.md 4.3). */
+        int cancellationCount) {
+
+    /**
+     * Cuanto "aleja" del cliente cada cancelacion de una reserva confirmada.
+     *
+     * <p>La penalizacion de posicionamiento que pide negocio.md 4.3 se expresa en
+     * la misma unidad con la que ya se ordena el buscador — kilometros — en vez de
+     * inventar una puntuacion nueva: es medible ("cancelar cuesta lo mismo que
+     * estar 10 km mas lejos"), no rompe el criterio principal de cercania y no
+     * puede expulsar a nadie del resultado, solo bajarlo.
+     */
+    public static final double CANCELLATION_PENALTY_KM = 10;
+
+    /** Techo de la penalizacion: a partir de aqui, cancelar mas no hunde mas. */
+    public static final double MAX_PENALTY_KM = 50;
+
+    /**
+     * Distancia con la que este cuidador compite en el listado. La distancia real
+     * sigue siendo {@code distanceKm} y es la que se muestra al usuario: esto solo
+     * afecta al orden.
+     */
+    public double rankingPenaltyKm() {
+        return Math.min(cancellationCount * CANCELLATION_PENALTY_KM, MAX_PENALTY_KM);
+    }
 
     /** Capacidad libre para todas las noches del rango [start, end). */
     public boolean hasCapacity(LocalDate start, LocalDate end, int petCount) {
