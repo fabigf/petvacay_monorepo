@@ -69,4 +69,10 @@ public class SitterProjectionKafkaListener {
     public void onResenaCreada(String payload) throws Exception {
         handler.onResenaCreada(objectMapper.readValue(payload, BookingEvents.ResenaCreadaEvent.class));
     }
+
+    @KafkaListener(topics = BookingEvents.ReputacionRecalculadaEvent.TOPIC, groupId = GROUP_ID)
+    public void onReputacionRecalculada(String payload) throws Exception {
+        handler.onReputacionRecalculada(
+                objectMapper.readValue(payload, BookingEvents.ReputacionRecalculadaEvent.class));
+    }
 }

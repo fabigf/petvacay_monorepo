@@ -61,35 +61,88 @@ public class NominatimGeocodingAdapter implements GeocodingPort {
 
     @Override
     public Optional<GeocodeResult> geocode(String query) {
+        List<GeocodeResult> results = search(query, 1);
+        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+    }
+
+    @Override
+    public List<GeocodeResult> suggest(String query, int limit) {
+        return search(query, limit);
+    }
+
+    /**
+     * Una sola llamada para ambos casos: pedir un candidato o pedir varios es el
+     * mismo {@code /search} de Nominatim cambiando {@code limit}.
+     *
+     * <p>Un fallo nunca se propaga: un proveedor externo caido no debe tumbar la
+     * busqueda ni devolver un 500 al usuario. El controlador lo trata igual que
+     * "direccion no encontrada".
+     */
+    private List<GeocodeResult> search(String query, int limit) {
         try {
             List<NominatimResult> results = restClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/search")
                             .queryParam("format", "json")
                             .queryParam("q", query)
-                            .queryParam("limit", 1)
+                            .queryParam("limit", limit)
+                            // Sin esto Nominatim responde en el idioma del
+                            // servidor: las direcciones espanolas saldrian con el
+                            // pais como "Spain" en lugar de "España".
+                            .queryParam("accept-language", "es")
+                            // Con el numero de portal desglosado en un campo
+                            // propio (en vez de tener que buscarlo dentro del
+                            // texto libre de "display_name") se puede confirmar
+                            // con certeza si un domicilio quedo geocodificado a
+                            // nivel de portal o solo a nivel de calle.
+                            .queryParam("addressdetails", 1)
                             .build())
                     .retrieve()
                     .body(new ParameterizedTypeReference<List<NominatimResult>>() {
                     });
 
-            if (results == null || results.isEmpty()) {
-                return Optional.empty();
+            if (results == null) {
+                return List.of();
             }
 
-            NominatimResult first = results.get(0);
-            return Optional.of(new GeocodeResult(
-                    Double.parseDouble(first.lat()), Double.parseDouble(first.lon()), first.displayName()));
-        } catch (RestClientException | NumberFormatException e) {
-            // Nunca se propaga: un proveedor externo caido no debe tumbar la
-            // busqueda ni devolver un 500 al usuario. El controlador lo trata
-            // igual que "direccion no encontrada".
+            return results.stream()
+                    .map(this::toDomain)
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+        } catch (RestClientException e) {
             log.warn("Fallo geocodificando '{}' contra Nominatim: {}", query, e.getMessage());
-            return Optional.empty();
+            return List.of();
+        }
+    }
+
+    /**
+     * Un candidato con coordenadas ilegibles se descarta en lugar de tumbar la
+     * lista entera: el resto de sugerencias siguen siendo utiles.
+     */
+    private GeocodeResult toDomain(NominatimResult result) {
+        try {
+            String houseNumber = result.address() == null ? null : result.address().houseNumber();
+            return new GeocodeResult(Double.parseDouble(result.lat()),
+                    Double.parseDouble(result.lon()), result.displayName(), houseNumber);
+        } catch (NumberFormatException e) {
+            log.warn("Nominatim devolvio coordenadas ilegibles: {} / {}", result.lat(), result.lon());
+            return null;
         }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private record NominatimResult(String lat, String lon, @JsonProperty("display_name") String displayName) {
+    private record NominatimResult(String lat, String lon, @JsonProperty("display_name") String displayName,
+                                   NominatimAddress address) {
+    }
+
+    /**
+     * Solo el numero de portal, del objeto {@code address} desglosado que
+     * Nominatim devuelve con {@code addressdetails=1}. Ausente cuando el
+     * resultado no llega a nivel de portal (por ejemplo, si solo hay datos de la
+     * calle) — esa ausencia es justo la señal que se necesita para saber si el
+     * numero pedido estaba mapeado o no.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record NominatimAddress(@JsonProperty("house_number") String houseNumber) {
     }
 }

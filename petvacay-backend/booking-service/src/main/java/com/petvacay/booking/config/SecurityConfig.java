@@ -17,10 +17,14 @@ import org.springframework.security.web.SecurityFilterChain;
  * unica excepcion es leer las resenas publicas de un cuidador
  * ({@code GET /reviews/sitters/**}) — es la vitrina de reputacion que un
  * visitante debe poder ver antes de registrarse, igual que el buscador de
- * search-service. La autorizacion mas fina de reservas — que solo el cliente
- * dueno pueda cancelarla, que solo su cuidador pueda aceptarla — es una regla
- * de negocio sobre datos, no sobre rutas, y por tanto no puede resolverse
- * aqui; queda pendiente y esta documentada como tal en el README.
+ * search-service.
+ *
+ * <p>La autorizacion mas fina de reservas — que solo el cliente dueno pueda
+ * cancelarla, que solo su cuidador pueda aceptarla, que solo sus dos partes
+ * puedan siquiera leerla — es una regla sobre DATOS y no sobre rutas, asi que
+ * no puede resolverse aqui: hace falta cargar la reserva para saber quien la
+ * compone. La aplica {@code BookingApplicationService.requireParticipant} en
+ * cada caso de uso, lecturas incluidas.
  */
 @Configuration
 @EnableWebSecurity

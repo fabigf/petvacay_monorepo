@@ -99,6 +99,28 @@ public final class BookingDtos {
         }
     }
 
+    /**
+     * Dirección exacta del cuidador y franja de entrega/recogida (negocio.md 4.2
+     * y 5). Solo llega a existir esta respuesta cuando la reserva ya está
+     * pagada; antes de eso, {@code QueryBookingUseCase.getHandoffInfo} rechaza
+     * la petición.
+     */
+    public record HandoffResponse(
+            String sitterAddress,
+            double sitterLatitude,
+            double sitterLongitude,
+            LocalDate dropOffDate,
+            LocalDate pickUpDate,
+            java.time.LocalTime windowStart,
+            java.time.LocalTime windowEnd) {
+
+        public static HandoffResponse from(com.petvacay.booking.ports.in.QueryBookingUseCase.HandoffInfo info) {
+            return new HandoffResponse(info.sitterAddress(), info.sitterLatitude(), info.sitterLongitude(),
+                    info.window().dropOffDate(), info.window().pickUpDate(),
+                    info.window().windowStart(), info.window().windowEnd());
+        }
+    }
+
     public record PetEmergencyRequest(
             @NotBlank(message = "Describe brevemente qué le ocurre a la mascota") String description) {
     }

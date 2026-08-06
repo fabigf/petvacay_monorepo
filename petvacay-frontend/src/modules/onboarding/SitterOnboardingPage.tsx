@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import {
   createSitterProfile,
-  getSitterProfile,
+  getMySitterProfile,
   submitIdentityDocument,
   updateSitterProfile,
   type CreateSitterProfileRequest,
 } from './onboardingApi'
+import { AddressPicker } from './AddressPicker'
 import type {
   HomeType,
   ServicePrices,
@@ -63,6 +64,11 @@ const verificationPresentation: Record<
 const emptyForm: CreateSitterProfileRequest = {
   description: '',
   homeType: 'APARTMENT',
+  // Sin dirección todavía: el centro de Madrid es solo el punto de partida del
+  // mapa hasta que el cuidador busca la suya.
+  address: '',
+  streetNumber: '',
+  floorDoor: '',
   latitude: 40.4168,
   longitude: -3.7038,
   servicePrices: { NIGHT_ACCOMMODATION: 20 },
@@ -76,6 +82,9 @@ function profileToForm(profile: SitterProfile): CreateSitterProfileRequest {
   return {
     description: profile.description ?? '',
     homeType: profile.homeType,
+    address: profile.address ?? '',
+    streetNumber: profile.streetNumber ?? '',
+    floorDoor: profile.floorDoor ?? '',
     latitude: profile.latitude,
     longitude: profile.longitude,
     servicePrices: profile.servicePrices,
@@ -173,26 +182,16 @@ function SitterProfileForm({
         </Select>
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Latitud" htmlFor="latitude" error={fieldErrors.latitude}>
-          <Input
-            id="latitude"
-            type="number"
-            step="any"
-            value={form.latitude}
-            onChange={(e) => setForm({ ...form, latitude: Number(e.target.value) })}
-          />
-        </Field>
-        <Field label="Longitud" htmlFor="longitude" error={fieldErrors.longitude}>
-          <Input
-            id="longitude"
-            type="number"
-            step="any"
-            value={form.longitude}
-            onChange={(e) => setForm({ ...form, longitude: Number(e.target.value) })}
-          />
-        </Field>
-      </div>
+      <AddressPicker
+        address={form.address}
+        streetNumber={form.streetNumber}
+        floorDoor={form.floorDoor}
+        latitude={form.latitude}
+        longitude={form.longitude}
+        requiresFloor={form.homeType === 'APARTMENT'}
+        error={fieldErrors.address}
+        onChange={(location) => setForm({ ...form, ...location })}
+      />
 
       <fieldset>
         <legend className="mb-2 text-sm font-medium text-slate-700">
@@ -326,7 +325,7 @@ export function SitterOnboardingPage() {
   const refresh = useCallback(async () => {
     if (!sitterId) return
     try {
-      setProfile(await getSitterProfile(sitterId))
+      setProfile(await getMySitterProfile())
     } catch {
       // 404 esperado mientras el cuidador no haya creado su perfil todavía.
       setProfile(null)

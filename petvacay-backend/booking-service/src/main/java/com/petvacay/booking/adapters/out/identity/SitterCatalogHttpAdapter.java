@@ -74,7 +74,10 @@ public class SitterCatalogHttpAdapter implements SitterCatalogPort {
                 response.firstName(),
                 response.verified(),
                 servicePrices,
-                response.maxSimultaneousPets());
+                response.maxSimultaneousPets(),
+                response.fullAddress(),
+                response.latitude(),
+                response.longitude());
     }
 
     /**
@@ -90,6 +93,9 @@ public class SitterCatalogHttpAdapter implements SitterCatalogPort {
             String firstName,
             boolean verified,
             Map<ServiceType, BigDecimal> servicePrices,
-            int maxSimultaneousPets) {
+            int maxSimultaneousPets,
+            String fullAddress,
+            double latitude,
+            double longitude) {
     }
 }

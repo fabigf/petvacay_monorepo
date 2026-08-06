@@ -35,8 +35,20 @@ public class SitterViewDocument {
     private UUID sitterId;
 
     private String firstName;
-    /** Suma de todas las puntuaciones recibidas; el promedio se calcula al leer. */
-    private BigDecimal ratingSum = BigDecimal.ZERO;
+
+    /**
+     * Suma de todas las puntuaciones recibidas; el promedio se calcula al leer.
+     *
+     * <p>Es {@code long} y no {@code BigDecimal} por una razon muy concreta:
+     * Spring Data MongoDB serializa {@code BigDecimal} como **cadena**, y
+     * {@code $inc} no puede aplicarse a una cadena — el operador fallaba en cada
+     * resena con "Cannot apply $inc to a value of non-numeric type", de modo que
+     * el rating del buscador nunca llegaba a subir. Una suma de puntuaciones
+     * enteras (1-5) es entera por definicion; el unico decimal del asunto es el
+     * promedio, que se calcula al leer y sigue siendo {@code BigDecimal}.
+     */
+    private long ratingSum;
+
     private int reviewCount;
     private BigDecimal pricePerNight;
     private String currency;
@@ -75,7 +87,7 @@ public class SitterViewDocument {
         // Documento nuevo: sin resenas todavia, sea lo que sea lo que traiga el
         // evento de catalogo (el handler siempre manda ZERO/0 aqui de todos
         // modos — ver SitterProjectionHandler.onCuidadorIndexado).
-        document.ratingSum = BigDecimal.ZERO;
+        document.ratingSum = 0;
         document.reviewCount = 0;
         document.cancellationCount = 0;
         document.occupancyByDate = new HashMap<>();
@@ -117,7 +129,8 @@ public class SitterViewDocument {
 
         BigDecimal rating = reviewCount == 0
                 ? BigDecimal.ZERO
-                : ratingSum.divide(BigDecimal.valueOf(reviewCount), 1, RoundingMode.HALF_UP);
+                : BigDecimal.valueOf(ratingSum)
+                        .divide(BigDecimal.valueOf(reviewCount), 1, RoundingMode.HALF_UP);
 
         return new SitterView(
                 sitterId,

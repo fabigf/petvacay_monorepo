@@ -1,4 +1,7 @@
-import { defineConfig } from 'vite'
+// `defineConfig` se toma de vitest y no de vite: es el mismo tipo ampliado con
+// la clave `test`, de modo que la configuración del proyecto y la de sus
+// pruebas viven juntas en vez de en dos ficheros que hay que mantener a la par.
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
@@ -10,6 +13,14 @@ export default defineConfig({
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
     },
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    // Los tests viven junto al código que prueban, no en un árbol paralelo:
+    // así un fichero que se mueve arrastra su prueba en el mismo commit.
+    include: ['src/**/*.test.{ts,tsx}'],
   },
   server: {
     port: 3000,

@@ -57,6 +57,35 @@ public class MongoSitterReadModelAdapter implements SitterReadModelPort {
         mongoTemplate.indexOps(SitterViewDocument.class)
                 .ensureIndex(new GeospatialIndex("location").typed(GeoSpatialIndexType.GEO_2DSPHERE));
         log.info("Modelo de lectura del buscador servido desde MongoDB (indice 2dsphere listo)");
+        migrateStringRatingSums();
+    }
+
+    /**
+     * Convierte a numero los {@code ratingSum} que quedaron guardados como cadena.
+     *
+     * <p>Cuando el campo era {@code BigDecimal}, Spring Data lo serializaba como
+     * cadena y {@code $inc} fallaba en cada resena. Los documentos escritos antes
+     * del arreglo conservan ese tipo, y {@code $inc} seguiria fallando sobre
+     * ellos aunque el codigo ya sea correcto: hay que arreglar tambien el dato.
+     *
+     * <p>Va aqui y no en un script aparte porque una proyeccion debe poder
+     * levantarse sola: quien despliegue esta version no tiene por que acordarse
+     * de ejecutar nada a mano contra Mongo. Es idempotente — al segundo arranque
+     * el filtro por tipo ya no encuentra nada.
+     */
+    private void migrateStringRatingSums() {
+        long migrated = mongoTemplate.getCollection(
+                        mongoTemplate.getCollectionName(SitterViewDocument.class))
+                .updateMany(
+                        new org.bson.Document("ratingSum", new org.bson.Document("$type", "string")),
+                        List.of(new org.bson.Document("$set", new org.bson.Document("ratingSum",
+                                new org.bson.Document("$toLong",
+                                        new org.bson.Document("$toDouble", "$ratingSum"))))))
+                .getModifiedCount();
+
+        if (migrated > 0) {
+            log.info("{} documentos del buscador migrados: ratingSum pasa de cadena a numero", migrated);
+        }
     }
 
     @Override
@@ -109,6 +138,15 @@ public class MongoSitterReadModelAdapter implements SitterReadModelPort {
         Update update = new Update()
                 .inc("ratingSum", rating)
                 .inc("reviewCount", 1);
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(sitterId)),
+                update, SitterViewDocument.class);
+    }
+
+    @Override
+    public void setReputation(UUID sitterId, long ratingSum, int reviewCount) {
+        Update update = new Update()
+                .set("ratingSum", ratingSum)
+                .set("reviewCount", reviewCount);
         mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(sitterId)),
                 update, SitterViewDocument.class);
     }

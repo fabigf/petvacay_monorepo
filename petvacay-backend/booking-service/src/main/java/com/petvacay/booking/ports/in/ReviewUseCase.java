@@ -10,9 +10,12 @@ import java.util.UUID;
 public interface ReviewUseCase {
 
     /**
-     * El autor se deduce de quien esta autenticado (igual que el resto de
-     * transiciones de reserva): si es el cliente de la reserva, valora al
-     * cuidador; si es el cuidador, valora al cliente.
+     * Valoracion del cliente sobre el cuidador que le prestó el servicio.
+     *
+     * <p>El autor se deduce de quien esta autenticado, igual que el resto de
+     * transiciones de reserva. Solo puede valorar el cliente: el cuidador ve las
+     * resenas que recibe pero no escribe ninguna, ni sobre si mismo ni sobre sus
+     * clientes.
      */
     Review leaveReview(UUID bookingId, UUID authorId, int rating, String comment);
 
@@ -29,4 +32,15 @@ public interface ReviewUseCase {
      * ni siquiera estaba pagada) o si ya se genero antes.
      */
     Optional<Review> penalizeSitterCancellation(UUID bookingId);
+
+    /**
+     * Republica la reputacion de todos los cuidadores valorados con sus valores
+     * absolutos, para que el buscador la reconstruya. Devuelve a cuantos afecta.
+     *
+     * <p>Existe porque la proyeccion puede desincronizarse del modelo de
+     * escritura — pasó de hecho: el rating agregado se guardaba en Mongo como
+     * cadena y ningun incremento llegaba a aplicarse, asi que las resenas
+     * existian en booking-service pero el buscador seguia mostrando cero.
+     */
+    int reprojectReputations();
 }

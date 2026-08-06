@@ -10,6 +10,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -49,6 +50,33 @@ public class ClientPetsHttpAdapter implements ClientPetsPort {
             throw new BusinessRuleViolationException("ERR_PET_OWNERSHIP_UNAVAILABLE",
                     "No se pudo validar la reserva", 503,
                     "No se han podido comprobar tus mascotas en este momento. Inténtalo de nuevo.");
+        }
+    }
+
+    /**
+     * A diferencia de {@link #petsOwnedBy}, aqui un fallo NO tumba la operacion:
+     * las fichas son informacion complementaria del detalle de una reserva, y
+     * quedarse sin ellas un momento es preferible a no poder abrir la reserva.
+     */
+    @Override
+    public List<PetDetails> detailsOf(Collection<UUID> petIds) {
+        if (petIds == null || petIds.isEmpty()) {
+            return List.of();
+        }
+
+        try {
+            List<PetDetails> pets = restClient.get()
+                    .uri(uriBuilder -> uriBuilder.path("/api/v1/internal/pets")
+                            .queryParam("ids", petIds.toArray())
+                            .build())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + PropagatedUserToken.current())
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<List<PetDetails>>() {
+                    });
+            return pets == null ? List.of() : pets;
+        } catch (Exception e) {
+            log.error("No se pudieron consultar las fichas de las mascotas {}", petIds, e);
+            return List.of();
         }
     }
 }

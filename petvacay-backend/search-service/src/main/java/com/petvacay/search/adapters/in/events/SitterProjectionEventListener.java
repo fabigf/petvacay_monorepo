@@ -57,4 +57,9 @@ public class SitterProjectionEventListener {
     public void on(BookingEvents.ResenaCreadaEvent event) {
         handler.onResenaCreada(event);
     }
+
+    @EventListener
+    public void on(BookingEvents.ReputacionRecalculadaEvent event) {
+        handler.onReputacionRecalculada(event);
+    }
 }

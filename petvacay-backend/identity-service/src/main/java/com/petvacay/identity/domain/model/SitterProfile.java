@@ -72,9 +72,40 @@ public class SitterProfile {
                                        GeoLocation location, Map<ServiceType, Money> servicePrices,
                                        int maxSimultaneousPets, Set<Species> acceptedSpecies,
                                        BigDecimal maxPetWeightKg, String photoUrl) {
+        requireCompleteAddress(location, homeType);
         return new SitterProfile(sitterId, description, homeType, location, servicePrices,
                 maxSimultaneousPets, acceptedSpecies, maxPetWeightKg, photoUrl,
                 VerificationStatus.PENDIENTE_VERIFICACION);
+    }
+
+    /**
+     * Un perfil publicado tiene que llevar a una puerta concreta.
+     *
+     * <p>La calle y el numero se exigen siempre: el cliente entrega ahi a su
+     * animal y el administrador contrasta ese domicilio al verificar el KYC. La
+     * planta y la puerta solo se exigen en un apartamento — en una casa o una
+     * finca no existen, y obligar a inventarselas produciria datos falsos.
+     *
+     * <p>Se valida al crear y al actualizar, nunca al rehidratar: los perfiles
+     * guardados antes de que existiera este campo tienen que poder seguir
+     * cargandose, y su dueno los completara la proxima vez que los edite.
+     */
+    private static void requireCompleteAddress(GeoLocation location, HomeType homeType) {
+        if (location.address() == null) {
+            throw BusinessRuleViolationException.unprocessable(
+                    "ERR_ADDRESS_REQUIRED", "Dirección incompleta",
+                    "Busca y selecciona tu dirección para que los clientes cercanos puedan encontrarte.");
+        }
+        if (location.streetNumber() == null) {
+            throw BusinessRuleViolationException.unprocessable(
+                    "ERR_STREET_NUMBER_REQUIRED", "Falta el número",
+                    "Indica el número de tu calle: sin él no se puede entregar la mascota.");
+        }
+        if (homeType == HomeType.APARTMENT && location.floorDoor() == null) {
+            throw BusinessRuleViolationException.unprocessable(
+                    "ERR_FLOOR_REQUIRED", "Falta la planta",
+                    "En un apartamento hay que indicar planta y puerta para saber a qué timbre llamar.");
+        }
     }
 
     public static SitterProfile rehydrate(UUID sitterId, String description, HomeType homeType,
@@ -128,9 +159,13 @@ public class SitterProfile {
                               Map<ServiceType, Money> servicePrices, int maxSimultaneousPets,
                               Set<Species> acceptedSpecies, BigDecimal maxPetWeightKg, String photoUrl,
                               Instant now) {
+        Objects.requireNonNull(homeType, "homeType");
+        Objects.requireNonNull(location, "location");
+        requireCompleteAddress(location, homeType);
+
         this.description = description;
-        this.homeType = Objects.requireNonNull(homeType, "homeType");
-        this.location = Objects.requireNonNull(location, "location");
+        this.homeType = homeType;
+        this.location = location;
         this.acceptedSpecies = acceptedSpecies == null || acceptedSpecies.isEmpty()
                 ? EnumSet.allOf(Species.class)
                 : EnumSet.copyOf(acceptedSpecies);

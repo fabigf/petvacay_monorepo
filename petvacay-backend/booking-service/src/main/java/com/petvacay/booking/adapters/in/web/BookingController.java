@@ -3,12 +3,14 @@ package com.petvacay.booking.adapters.in.web;
 import com.petvacay.booking.adapters.in.web.BookingDtos.BookingDetailResponse;
 import com.petvacay.booking.adapters.in.web.BookingDtos.CreateBookingRequest;
 import com.petvacay.booking.adapters.in.web.BookingDtos.CreateBookingResponse;
+import com.petvacay.booking.adapters.in.web.BookingDtos.HandoffResponse;
 import com.petvacay.booking.adapters.in.web.BookingDtos.OpenDisputeRequest;
 import com.petvacay.booking.adapters.in.web.BookingDtos.PetEmergencyRequest;
 import com.petvacay.booking.domain.model.Booking;
 import com.petvacay.booking.ports.in.CreateBookingUseCase;
 import com.petvacay.booking.ports.in.ManageBookingUseCase;
 import com.petvacay.booking.ports.in.QueryBookingUseCase;
+import com.petvacay.booking.ports.out.ClientPetsPort;
 import com.petvacay.shared.security.AuthenticatedUser;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -58,9 +61,58 @@ public class BookingController {
         return ResponseEntity.status(HttpStatus.CREATED).body(CreateBookingResponse.from(booking));
     }
 
+    /**
+     * Detalle de una reserva. Solo lo ven sus dos partes: ver el javadoc de
+     * {@code QueryBookingUseCase.getById}.
+     */
     @GetMapping("/{bookingId}")
-    public BookingDetailResponse getById(@PathVariable UUID bookingId) {
-        return BookingDetailResponse.from(queryBooking.getById(bookingId));
+    public BookingDetailResponse getById(@PathVariable UUID bookingId,
+                                         @AuthenticatedUser UUID actingUserId) {
+        return BookingDetailResponse.from(queryBooking.getById(bookingId, actingUserId));
+    }
+
+    /**
+     * Plazas libres de un cuidador noche a noche, para que el cliente vea la
+     * disponibilidad ANTES de enviar la solicitud en vez de descubrirla con un
+     * 409 al confirmarla.
+     *
+     * <p>Cuelga de {@code /bookings} y no del buscador porque la respuesta la
+     * calcula quien luego va a validar la reserva: asi lo que se enseña y lo que
+     * se aplica no pueden discrepar.
+     *
+     * <p>Va declarado ANTES que {@code /{bookingId}} porque Spring resuelve la
+     * ruta literal frente a la variable, pero dejarlo explicito evita que un
+     * cambio futuro de orden lo convierta en "una reserva llamada availability".
+     */
+    @GetMapping("/availability")
+    public List<QueryBookingUseCase.DailyAvailability> availability(
+            @RequestParam UUID sitterId,
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        return queryBooking.availability(sitterId, startDate, endDate);
+    }
+
+    /**
+     * Fichas de las mascotas de la reserva. Van en su propio recurso y no dentro
+     * del detalle porque viven en otro servicio: incrustarlas obligaria a que
+     * cada lectura de una reserva — incluido el listado — esperase a una llamada
+     * HTTP a identity-service que la mayoria de las pantallas no necesitan.
+     */
+    @GetMapping("/{bookingId}/pets")
+    public List<ClientPetsPort.PetDetails> pets(@PathVariable UUID bookingId,
+                                                @AuthenticatedUser UUID actingUserId) {
+        return queryBooking.listPetsOfBooking(bookingId, actingUserId);
+    }
+
+    /**
+     * Dirección exacta del cuidador y franja de entrega/recogida (negocio.md 4.2
+     * y 5). En su propio recurso por el mismo motivo que las mascotas: solo hace
+     * falta al ver el detalle de una reserva ya pagada, no en cada lectura.
+     */
+    @GetMapping("/{bookingId}/handoff")
+    public HandoffResponse handoff(@PathVariable UUID bookingId,
+                                   @AuthenticatedUser UUID actingUserId) {
+        return HandoffResponse.from(queryBooking.getHandoffInfo(bookingId, actingUserId));
     }
 
     /** Historial de reservas del usuario, como cliente o como cuidador. */

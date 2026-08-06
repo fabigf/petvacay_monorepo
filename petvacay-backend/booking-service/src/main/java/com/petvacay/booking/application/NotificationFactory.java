@@ -5,6 +5,7 @@ import com.petvacay.booking.domain.model.CancellationActor;
 import com.petvacay.booking.domain.model.CancellationOutcome;
 import com.petvacay.booking.domain.model.Notification;
 import com.petvacay.booking.domain.model.NotificationType;
+import com.petvacay.identity.domain.event.IdentityEvents;
 import com.petvacay.shared.domain.DomainEvent;
 
 import java.time.Instant;
@@ -88,6 +89,33 @@ final class NotificationFactory {
                             body, e.bookingId(), now),
                     to(Notification.ADMIN_AUDIENCE, NotificationType.PET_EMERGENCY,
                             "Alerta médica en una reserva", body, e.bookingId(), now));
+        }
+
+        // --------------------------------------------------- eventos de identidad
+        // El buzon es de la plataforma entera, no solo de las reservas: si el
+        // aviso "tienes un KYC pendiente" no cupiera aqui, el administrador
+        // tendria dos bandejas distintas que vigilar.
+
+        if (event instanceof IdentityEvents.CuidadorPendienteVerificacionEvent e) {
+            return List.of(to(Notification.ADMIN_AUDIENCE, NotificationType.SITTER_PENDING_REVIEW,
+                    "Cuidador pendiente de verificar",
+                    e.sitterName() + " ha subido su documento de identidad y espera verificación.",
+                    null, now));
+        }
+
+        if (event instanceof IdentityEvents.CuidadorVerificadoEvent e) {
+            return List.of(to(e.sitterId(), NotificationType.SITTER_APPROVED,
+                    "Tu perfil ya está verificado",
+                    "Has superado la verificación de identidad: ya apareces en el buscador.",
+                    null, now));
+        }
+
+        if (event instanceof IdentityEvents.CuidadorRechazadoEvent e) {
+            return List.of(to(e.sitterId(), NotificationType.SITTER_REJECTED,
+                    "Verificación rechazada",
+                    "No se ha podido verificar tu identidad: " + e.reason()
+                            + ". Puedes volver a subir el documento.",
+                    null, now));
         }
 
         // Resenas y demas eventos no generan aviso: no hay nada que el usuario

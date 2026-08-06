@@ -54,6 +54,7 @@ public class DevDataSeeder {
             seedSitter(registerUser, onboarding, verification, "carlos.ruiz@petvacay.test", "Carlos", "Ruiz",
                     "Casa con jardín vallado en Chamberí. 8 años cuidando perros de todos los tamaños.",
                     HomeType.HOUSE_GARDEN, 40.4378, -3.7038,
+                    "Calle de Eloy Gonzalo, Chamberí, Madrid", "10", null,
                     servicePrices(ServiceType.NIGHT_ACCOMMODATION, "25.00", ServiceType.WALKING, "12.00"),
                     3, EnumSet.of(Species.DOG, Species.CAT), "40.00", true);
 
@@ -61,6 +62,7 @@ public class DevDataSeeder {
             seedSitter(registerUser, onboarding, verification, "marta.lopez@petvacay.test", "Marta", "Lopez",
                     "Apartamento tranquilo cerca del Retiro, ideal para gatos y perros pequeños.",
                     HomeType.APARTMENT, 40.4153, -3.6844,
+                    "Calle de Alcalá, Retiro, Madrid", "120", "3º B",
                     servicePrices(ServiceType.DAY_CARE, "18.50"),
                     2, EnumSet.of(Species.CAT, Species.RABBIT, Species.DOG), "10.00", true);
 
@@ -68,6 +70,7 @@ public class DevDataSeeder {
             seedSitter(registerUser, onboarding, verification, "javier.moreno@petvacay.test", "Javier", "Moreno",
                     "Finca rural a 20 minutos del centro con 2000 m2 para correr.",
                     HomeType.RURAL_HOUSE, 40.5100, -3.6500,
+                    "Camino de la Dehesa, Alcobendas, Madrid", "4", null,
                     servicePrices(ServiceType.NIGHT_ACCOMMODATION, "32.00",
                             ServiceType.DAY_CARE, "22.00", ServiceType.WALKING, "14.00"),
                     5, EnumSet.allOf(Species.class), null, true);
@@ -76,6 +79,7 @@ public class DevDataSeeder {
             seedSitter(registerUser, onboarding, verification, "elena.pending@petvacay.test", "Elena", "Vidal",
                     "Perfil recién creado, pendiente de verificación de identidad.",
                     HomeType.APARTMENT, 40.4200, -3.7000,
+                    "Calle Gran Vía, Centro, Madrid", "45", "1º A",
                     servicePrices(ServiceType.NIGHT_ACCOMMODATION, "20.00"),
                     2, EnumSet.of(Species.DOG), "15.00", false);
 
@@ -111,14 +115,16 @@ public class DevDataSeeder {
     private void seedSitter(RegisterUserUseCase registerUser, SitterOnboardingUseCase onboarding,
                             SitterVerificationUseCase verification, String email, String firstName,
                             String lastName, String description, HomeType homeType, double lat, double lng,
-                            Map<ServiceType, BigDecimal> servicePrices, int maxPets, Set<Species> species,
-                            String maxWeight, boolean approve) {
+                            String address, String streetNumber, String floorDoor,
+                            Map<ServiceType, BigDecimal> servicePrices, int maxPets,
+                            Set<Species> species, String maxWeight, boolean approve) {
 
         UserAccount sitter = registerUser.register(new RegisterUserUseCase.RegisterUserCommand(
                 email, "password123", firstName, lastName, LocalDate.of(1988, 3, 22), true));
 
         onboarding.createProfile(new SitterOnboardingUseCase.CreateSitterProfileCommand(
-                sitter.id(), description, homeType, lat, lng, servicePrices, maxPets,
+                sitter.id(), description, homeType, lat, lng, address, streetNumber, floorDoor,
+                servicePrices, maxPets,
                 species, maxWeight == null ? null : new BigDecimal(maxWeight),
                 "https://i.pravatar.cc/400?u=" + email));
 

@@ -2,10 +2,14 @@ package com.petvacay.identity.ports.out;
 
 import com.petvacay.identity.domain.model.Pet;
 import com.petvacay.identity.domain.model.RefreshToken;
+import com.petvacay.identity.domain.model.Role;
 import com.petvacay.identity.domain.model.SitterProfile;
 import com.petvacay.identity.domain.model.UserAccount;
+import com.petvacay.identity.domain.model.VerificationStatus;
 import com.petvacay.shared.domain.DomainEvent;
+import com.petvacay.shared.domain.Page;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,6 +29,15 @@ public final class IdentityPorts {
         Optional<UserAccount> findByEmail(String email);
 
         boolean existsByEmail(String email);
+
+        /**
+         * Cuentas filtradas y paginadas para el back-office. Cada filtro es
+         * opcional: {@code null} significa "no filtres por esto".
+         */
+        Page<UserAccount> search(String text, Role role, Boolean active, int page, int size);
+
+        /** Cuentas concretas por identificador, para resolver nombres en lote. */
+        List<UserAccount> findAllById(Collection<UUID> userIds);
     }
 
     public interface PetRepositoryPort {
@@ -34,6 +47,9 @@ public final class IdentityPorts {
         Optional<Pet> findById(UUID petId);
 
         List<Pet> findByOwnerId(UUID ownerId);
+
+        /** Fichas de un conjunto concreto de mascotas, en una sola consulta. */
+        List<Pet> findAllById(Collection<UUID> petIds);
 
         void deleteById(UUID petId);
     }
@@ -45,6 +61,21 @@ public final class IdentityPorts {
         Optional<SitterProfile> findById(UUID sitterId);
 
         List<SitterProfile> findByVerificationStatusPending();
+
+        /**
+         * Perfiles de cuidador paginados, filtrados por estado de verificacion y
+         * por texto sobre nombre, apellidos o email.
+         *
+         * <p>El texto se busca en datos de la CUENTA, que es otro agregado, asi
+         * que el adaptador cruza ambas tablas. Se hace aqui y no filtrando en
+         * memoria despues porque quitar filas ya paginadas devolveria paginas
+         * incompletas y un total que no cuadra con lo que se ve. Ambos viven en
+         * la misma base de datos, asi que es una sola consulta.
+         */
+        Page<SitterProfile> search(VerificationStatus status, String text, int page, int size);
+
+        /** Perfiles de una lista concreta de cuidadores. */
+        List<SitterProfile> findAllById(Collection<UUID> sitterIds);
     }
 
     /** Abstrae el algoritmo de hashing para que el dominio no dependa de Spring Security. */

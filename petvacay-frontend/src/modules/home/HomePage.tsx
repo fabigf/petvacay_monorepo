@@ -47,7 +47,15 @@ export function HomePage() {
       </section>
 
       <section>
-        <h2 className="mb-4 text-xl font-bold text-slate-800">Cómo funciona</h2>
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-xl font-bold text-slate-800">Cómo funciona</h2>
+          <Link
+            to="/como-funciona"
+            className="text-sm font-medium text-brand-700 underline hover:text-brand-800"
+          >
+            Ver el proceso completo
+          </Link>
+        </div>
         <ol className="grid gap-4 sm:grid-cols-4">
           {[
             'Busca cuidadores disponibles cerca de ti para tus fechas.',

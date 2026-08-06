@@ -190,6 +190,11 @@ public final class BookingEvents {
             UUID eventId,
             Instant occurredAt,
             UUID bookingId,
+            // Las dos partes viajan en el evento — no solo quien abrio — porque
+            // el registro de incidencias tiene que poder decir a quien afecta
+            // cada una sin volver a consultar la reserva.
+            UUID clientId,
+            UUID sitterId,
             UUID openedBy,
             String reason) implements DomainEvent {
 
@@ -237,6 +242,35 @@ public final class BookingEvents {
         @Override
         public UUID aggregateId() {
             return bookingId;
+        }
+    }
+
+    /**
+     * Reputacion completa de un cuidador, en valores absolutos.
+     *
+     * <p>Existe para reconstruir la proyeccion del buscador cuando esta se
+     * desincroniza del modelo de escritura. A diferencia de
+     * {@code ResenaCreadaEvent}, que dice "suma una resena mas", este dice
+     * "estos son el total y la suma exactos": aplicarlo dos veces deja el mismo
+     * resultado, asi que una reproyeccion no puede inflar la nota de nadie.
+     */
+    public record ReputacionRecalculadaEvent(
+            UUID eventId,
+            Instant occurredAt,
+            UUID sitterId,
+            long ratingSum,
+            int reviewCount) implements DomainEvent {
+
+        public static final String TOPIC = "petvacay.booking.reputacion-recalculada";
+
+        @Override
+        public String eventName() {
+            return TOPIC;
+        }
+
+        @Override
+        public UUID aggregateId() {
+            return sitterId;
         }
     }
 

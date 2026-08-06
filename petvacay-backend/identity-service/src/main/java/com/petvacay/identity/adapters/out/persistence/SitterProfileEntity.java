@@ -51,6 +51,17 @@ public class SitterProfileEntity {
     @Column(nullable = false)
     private double longitude;
 
+    /** Direccion legible de la que salieron las coordenadas; ver GeoLocation. */
+    @Column(length = 500)
+    private String address;
+
+    /** El geocodificador no conoce el portal ni el timbre: los aporta el cuidador. */
+    @Column(name = "street_number", length = 20)
+    private String streetNumber;
+
+    @Column(name = "floor_door", length = 50)
+    private String floorDoor;
+
     /**
      * Un cuidador define sus propios servicios y su propia tarifa para cada uno
      * (negocio.md seccion 2) — no una unica tarifa. Todo en EUR, como el resto
@@ -101,6 +112,9 @@ public class SitterProfileEntity {
         entity.homeType = profile.homeType();
         entity.latitude = profile.location().latitude();
         entity.longitude = profile.location().longitude();
+        entity.address = profile.location().address();
+        entity.streetNumber = profile.location().streetNumber();
+        entity.floorDoor = profile.location().floorDoor();
         entity.servicePrices = new EnumMap<>(ServiceType.class);
         profile.servicePrices().forEach((type, money) -> entity.servicePrices.put(type, money.amount()));
         entity.maxSimultaneousPets = profile.maxSimultaneousPets();
@@ -123,7 +137,7 @@ public class SitterProfileEntity {
                 sitterId,
                 description,
                 homeType,
-                new GeoLocation(latitude, longitude),
+                new GeoLocation(latitude, longitude, address, streetNumber, floorDoor),
                 prices,
                 maxSimultaneousPets,
                 acceptedSpecies.isEmpty() ? EnumSet.allOf(Species.class) : EnumSet.copyOf(acceptedSpecies),

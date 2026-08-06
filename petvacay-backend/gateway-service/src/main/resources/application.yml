@@ -26,14 +26,16 @@ spring:
                 redis-rate-limiter.burstCapacity: 10
                 redis-rate-limiter.requestedTokens: 1
 
-        # El back-office esta repartido entre dos servicios: /admin/sitters/** lo
-        # sirve identity-service y /admin/bookings/** booking-service, que es
-        # quien tiene el agregado. Esta ruta va ANTES que la de identity-service
-        # porque el Gateway evalua en orden y aquella casa con /admin/** entero.
+        # El back-office esta repartido entre dos servicios: /admin/sitters/** y
+        # /admin/users/** los sirve identity-service, mientras que
+        # /admin/bookings/** y /admin/incidents/** los sirve booking-service, que
+        # es quien tiene esos agregados. Esta ruta va ANTES que la de
+        # identity-service porque el Gateway evalua en orden y aquella casa con
+        # /admin/** entero.
         - id: booking-admin
           uri: ${BOOKING_SERVICE_URL:http://localhost:8083}
           predicates:
-            - Path=/api/v1/admin/bookings/**
+            - Path=/api/v1/admin/bookings/**,/api/v1/admin/incidents/**
           filters:
             - name: RequestRateLimiter
               args:
@@ -99,21 +101,30 @@ spring:
                 redis-rate-limiter.burstCapacity: 60
 
         # Ruta separada y ANTES que la general de search-service (Gateway evalua
-        # rutas en orden, la primera que casa gana): /geocode reenvia a Nominatim,
-        # cuya politica de uso exige un maximo de 1 peticion/segundo EN TOTAL. El
-        # limite de aqui es por IP, no global, asi que no lo garantiza del todo
-        # con muchos usuarios concurrentes — ver el javadoc de
-        # NominatimGeocodingAdapter para el plan si esto pasa a produccion real.
+        # rutas en orden, la primera que casa gana): /geocode y su autocompletado
+        # reenvian a Nominatim, cuya politica de uso exige un maximo de 1
+        # peticion/segundo EN TOTAL. El limite de aqui es por IP, no global, asi
+        # que no lo garantiza del todo con muchos usuarios concurrentes — ver el
+        # javadoc de NominatimGeocodingAdapter para el plan si esto pasa a
+        # produccion real.
+        #
+        # El comodin cubre tambien /geocode/suggest: sin el caeria en la ruta
+        # general de search-service, con un limite 50 veces mas laxo pensado para
+        # datos propios, no para un proveedor externo con cuota.
         - id: search-geocode
           uri: ${SEARCH_SERVICE_URL:http://localhost:8084}
           predicates:
-            - Path=/api/v1/search/geocode
+            - Path=/api/v1/search/geocode/**
           filters:
             - name: RequestRateLimiter
               args:
                 key-resolver: '#{@clientIpKeyResolver}'
-                redis-rate-limiter.replenishRate: 1
-                redis-rate-limiter.burstCapacity: 2
+                # Algo mas holgado que 1/s desde que existe el autocompletado:
+                # escribir una direccion completa dispara varias consultas pese al
+                # retardo del cliente, y con 1/s la ultima — la que de verdad
+                # importa — seria justo la rechazada.
+                redis-rate-limiter.replenishRate: 2
+                redis-rate-limiter.burstCapacity: 5
 
         - id: search-service
           uri: ${SEARCH_SERVICE_URL:http://localhost:8084}

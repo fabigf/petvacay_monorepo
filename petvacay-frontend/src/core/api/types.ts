@@ -46,6 +46,13 @@ export interface GeocodeResult {
   lat: number
   lng: number
   displayName: string
+  /**
+   * Número de portal, solo cuando OpenStreetMap tiene ese resultado mapeado a
+   * ese nivel de detalle; si no, viene ausente y las coordenadas son las de la
+   * calle. Es el dato fiable para saber si un domicilio quedó geocodificado a
+   * nivel de portal — comparar contra `displayName` en texto libre no lo es.
+   */
+  houseNumber?: string
 }
 
 export interface SearchFilters {
@@ -56,6 +63,20 @@ export interface SearchFilters {
   endDate?: string
   petType?: Species
   petCount?: number
+}
+
+/**
+ * Plazas libres de un cuidador en una noche concreta.
+ *
+ * Lo calcula booking-service con la misma cuenta que valida la reserva, no el
+ * modelo de lectura del buscador: así lo que se muestra antes de reservar es
+ * exactamente lo que se va a aplicar al confirmarla.
+ */
+export interface DailyAvailability {
+  date: string
+  capacity: number
+  occupied: number
+  free: number
 }
 
 export interface CreateBookingRequest {
@@ -100,9 +121,45 @@ export interface BookingDetail {
   disputeResolutionNotes?: string
 }
 
+/**
+ * Dirección exacta del cuidador y franja de entrega/recogida de una reserva ya
+ * pagada (negocio.md 4.2 y 5). Antes de la confirmación del pago el backend
+ * rechaza la petición: por eso vive en su propio recurso y no en el detalle.
+ */
+export interface BookingHandoff {
+  sitterAddress: string
+  sitterLatitude: number
+  sitterLongitude: number
+  dropOffDate: string
+  pickUpDate: string
+  /** Formato HH:mm:ss, tal y como lo serializa java.time.LocalTime. */
+  windowStart: string
+  windowEnd: string
+}
+
 export interface Pet {
   petId: string
   ownerId: string
+  name: string
+  species: Species
+  breed?: string
+  ageYears: number
+  weightKg: number
+  medicalNeeds?: string
+  dietaryRestrictions?: string
+  sociability: Sociability
+  specialMedicalNeeds: boolean
+}
+
+/**
+ * Ficha de una mascota tal y como la ve una de las partes de la reserva.
+ *
+ * Es más escueta que `Pet` a propósito: no lleva `ownerId` porque quien la
+ * consulta ya sabe de quién es la reserva, y llega desde booking-service, no
+ * desde el listado de mascotas propias.
+ */
+export interface BookingPet {
+  petId: string
   name: string
   species: Species
   breed?: string
@@ -138,6 +195,13 @@ export interface SitterProfile {
   firstName?: string
   description?: string
   homeType: HomeType
+  /** Dirección legible de la que salieron las coordenadas; los perfiles antiguos no la tienen. */
+  address?: string
+  /** El geocodificador no conoce el portal ni el timbre: los aporta el cuidador. */
+  streetNumber?: string
+  floorDoor?: string
+  /** Las tres partes ya concatenadas por el backend, para mostrarlas sin recomponer. */
+  fullAddress?: string
   latitude: number
   longitude: number
   servicePrices: ServicePrices
@@ -177,6 +241,9 @@ export type NotificationType =
   | 'DISPUTE_OPENED'
   | 'DISPUTE_RESOLVED'
   | 'PET_EMERGENCY'
+  | 'SITTER_PENDING_REVIEW'
+  | 'SITTER_APPROVED'
+  | 'SITTER_REJECTED'
 
 export interface Notification {
   notificationId: string
@@ -190,6 +257,67 @@ export interface Notification {
 
 /** Resolución manual de una disputa por el equipo de administración (negocio.md 4.4). */
 export type DisputeResolution = 'FAVOR_CLIENT' | 'FAVOR_SITTER' | 'SPLIT'
+
+/** Tramo de una lista larga; `totalPages` evita recalcularlo en cada vista. */
+export interface PageResponse<T> {
+  content: T[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+}
+
+/**
+ * Ficha completa de un cuidador para el back-office. Lleva datos que la vista
+ * pública de un perfil no expone —correo, documento de identidad, si la cuenta
+ * sigue activa— porque son justo los que hacen falta para verificar un KYC.
+ */
+export interface AdminSitter {
+  sitterId: string
+  firstName?: string
+  lastName?: string
+  email?: string
+  birthDate?: string
+  accountActive: boolean
+  registeredAt?: string
+  description?: string
+  homeType: HomeType
+  /** Dirección legible; los perfiles anteriores al selector solo tienen coordenadas. */
+  address?: string
+  streetNumber?: string
+  floorDoor?: string
+  fullAddress?: string
+  latitude: number
+  longitude: number
+  servicePrices: ServicePrices
+  currency: string
+  maxSimultaneousPets: number
+  acceptedSpecies: Species[]
+  maxPetWeightKg?: number
+  photoUrl?: string
+  verificationStatus: VerificationStatus
+  identityDocumentReference?: string
+  searchable: boolean
+  rejectionReason?: string
+  verifiedAt?: string
+}
+
+export type IncidentType = 'DISPUTA' | 'ALERTA_MEDICA'
+export type IncidentStatus = 'ABIERTA' | 'RESUELTA'
+
+/** Registro de lo que ha pasado en una reserva y a quién afecta (negocio.md 2.3). */
+export interface Incident {
+  incidentId: string
+  bookingId: string
+  clientId: string
+  sitterId: string
+  type: IncidentType
+  status: IncidentStatus
+  description?: string
+  resolutionNotes?: string
+  openedAt: string
+  resolvedAt?: string
+}
 
 /** Formato RFC 7807 devuelto por el backend (especificaciones.md 4). */
 export interface ProblemDetails {

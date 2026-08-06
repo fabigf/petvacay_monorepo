@@ -2,12 +2,18 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
+  acceptBooking,
   cancelBooking,
   confirmPayment,
   getBooking,
+  getBookingHandoff,
+  listBookingPets,
   openDispute,
   raisePetEmergency,
+  rejectBooking,
 } from './bookingsApi'
+import { BookingPetsCard } from './BookingPetsCard'
+import { BookingHandoffCard } from './BookingHandoffCard'
 import { BookingStatusBadge } from './BookingStatusBadge'
 import { createPaymentIntent } from './paymentsApi'
 import { StripePaymentForm } from './StripePaymentForm'
@@ -15,6 +21,8 @@ import { leaveReview, listReviewsForBooking, listReviewsForSitter } from '@/modu
 import { getSitterProfile } from '@/modules/onboarding/onboardingApi'
 import type {
   BookingDetail,
+  BookingHandoff,
+  BookingPet,
   HomeType,
   Review,
   ReviewAuthorRole,
@@ -79,8 +87,18 @@ export function BookingDetailPage() {
   const [sitter, setSitter] = useState<SitterProfile | null>(null)
   const [sitterRating, setSitterRating] = useState<{ average: number; count: number } | null>(null)
 
+  // Fichas de las mascotas: viven en identity-service, así que es una segunda
+  // llamada. Es la información con la que el cuidador decide si acepta.
+  const [pets, setPets] = useState<BookingPet[] | null>(null)
+
+  // Dirección y franja de entrega: solo existen a partir de CONFIRMADO
+  // (negocio.md 4.2). `null` es el estado normal antes de pagar, no un error.
+  const [handoff, setHandoff] = useState<BookingHandoff | null>(null)
+  const [loadingHandoff, setLoadingHandoff] = useState(false)
+
   const [reviews, setReviews] = useState<Review[]>([])
-  const [reviewRating, setReviewRating] = useState(5)
+  // 0 = sin puntuar todavía; el formulario no se puede enviar así.
+  const [reviewRating, setReviewRating] = useState(0)
   const [reviewComment, setReviewComment] = useState('')
   const [submittingReview, setSubmittingReview] = useState(false)
 
@@ -148,6 +166,32 @@ export function BookingDetailPage() {
   }, [refresh])
 
   useEffect(() => {
+    if (!bookingId) return
+    listBookingPets(bookingId)
+      .then(setPets)
+      .catch(() => setPets([]))
+  }, [bookingId])
+
+  // Se consulta cuando el estado ya implica pago confirmado (negocio.md 4.2):
+  // pedirla antes solo generaría un 409 esperado del backend. `isFunded` mira
+  // el estado ACTUAL en cada render, así que en cuanto `booking` se refresca a
+  // CONFIRMADO tras pagar, este efecto se dispara solo.
+  const isFunded =
+    booking !== null &&
+    (['CONFIRMADO', 'EN_PROGRESO', 'EN_DISPUTA', 'FINALIZADO'] as BookingDetail['status'][]).includes(
+      booking.status,
+    )
+
+  useEffect(() => {
+    if (!bookingId || !isFunded) return
+    setLoadingHandoff(true)
+    getBookingHandoff(bookingId)
+      .then(setHandoff)
+      .catch(() => setHandoff(null))
+      .finally(() => setLoadingHandoff(false))
+  }, [bookingId, isFunded])
+
+  useEffect(() => {
     const sitterId = booking?.sitterId
     if (!sitterId) return
     getSitterProfile(sitterId).then(setSitter).catch(() => setSitter(null))
@@ -204,6 +248,16 @@ export function BookingDetailPage() {
   // Una reserva terminada o congelada por una disputa ya no admite cancelación:
   // solo el equipo de administración puede resolverla (negocio.md 4.4).
   const isCancellable = !['FINALIZADO', 'CANCELADO', 'EN_DISPUTA'].includes(booking.status)
+
+  // Si no hay ni un botón ni un aviso de estado que mostrar, la tarjeta de
+  // acciones no se pinta: un bloque con solo el título hace dudar de si falta
+  // algo por cargar.
+  const hasActions =
+    (isClient && booking.status === 'PENDIENTE_PAGO') ||
+    (isSitter && booking.status === 'SOLICITADO') ||
+    isCancellable ||
+    booking.status === 'CONFIRMADO' ||
+    booking.status === 'EN_PROGRESO'
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -276,6 +330,14 @@ export function BookingDetailPage() {
           </Card>
         )}
 
+        {/* Va antes del detalle del servicio para el cuidador: es lo primero que
+            necesita mirar cuando entra a decidir si acepta la solicitud. */}
+        <BookingPetsCard pets={pets} />
+
+        {/* No se muestra nada mientras la reserva no está pagada: la propia
+            tarjeta desaparece por su cuenta si `handoff` sigue siendo `null`. */}
+        <BookingHandoffCard handoff={handoff} loading={loadingHandoff} />
+
         <Card>
           <SectionTitle>Servicio</SectionTitle>
           <Row label="Tipo" value={serviceTypeLabels[booking.serviceType]} />
@@ -322,7 +384,11 @@ export function BookingDetailPage() {
           </Card>
         )}
 
-        {/* Acciones disponibles según el estado actual de la máquina de estados */}
+        {/* Acciones disponibles según el estado actual de la máquina de estados.
+            La tarjeta entera desaparece cuando no queda ninguna: una reserva ya
+            finalizada o cancelada mostraba un bloque "Acciones" vacío, que hace
+            dudar de si falta algo por cargar. */}
+        {hasActions && (
         <Card>
           <SectionTitle>Acciones</SectionTitle>
           <div className="flex flex-wrap gap-2">
@@ -332,7 +398,32 @@ export function BookingDetailPage() {
               </Button>
             )}
 
-            {isCancellable && (
+            {/* Responder a la solicitud también desde aquí: vivía solo en "Mis
+                reservas", así que el cuidador que abría el detalle para decidir
+                tenía que volver atrás para poder hacerlo. */}
+            {isSitter && booking.status === 'SOLICITADO' && (
+              <>
+                <Button
+                  loading={busy}
+                  onClick={() => void run(() => acceptBooking(booking.bookingId), 'Reserva aceptada')}
+                >
+                  Aceptar solicitud
+                </Button>
+                <Button
+                  variant="secondary"
+                  loading={busy}
+                  onClick={() => void run(() => rejectBooking(booking.bookingId), 'Solicitud rechazada')}
+                >
+                  Rechazar
+                </Button>
+              </>
+            )}
+
+            {/* Rechazar y cancelar acaban ambas en CANCELADO, pero no son lo
+                mismo de cara al cuidador: cancelar una reserva ya confirmada le
+                cuesta una reseña negativa. Con la solicitud aún sin responder se
+                ofrece "Rechazar" y no las dos a la vez. */}
+            {isCancellable && !(isSitter && booking.status === 'SOLICITADO') && (
                 <Button
                   variant="danger"
                   loading={busy}
@@ -346,6 +437,17 @@ export function BookingDetailPage() {
                   Cancelar reserva
                 </Button>
               )}
+
+            {booking.status === 'CONFIRMADO' && (
+              <p className="text-sm text-slate-500">
+                El servicio comenzará automáticamente el {booking.startDate}.
+              </p>
+            )}
+            {booking.status === 'EN_PROGRESO' && (
+              <p className="text-sm text-slate-500">
+                Servicio en curso. Los fondos se liberarán solos 24 h después de terminar.
+              </p>
+            )}
           </div>
 
           {clientSecret && (
@@ -360,6 +462,7 @@ export function BookingDetailPage() {
           )}
 
         </Card>
+        )}
 
         {/* Abrir una incidencia es una acción excepcional y de consecuencias serias
             (congela el pago al cuidador): va en su propio bloque, no mezclada entre
@@ -451,28 +554,43 @@ export function BookingDetailPage() {
               </div>
             )}
 
-            {reviews.some((r) => r.authorId === userId) ? (
-              <p className="text-sm text-slate-500">Ya has dejado tu valoración de esta reserva.</p>
-            ) : (
-              <form onSubmit={(e) => void handleLeaveReview(e)} className="flex flex-col gap-3">
-                <Field label="Tu valoración" htmlFor="reviewRating">
-                  <StarRating value={reviewRating} onChange={setReviewRating} size="lg" />
-                </Field>
-                <Field label="Comentario (opcional)" htmlFor="reviewComment">
-                  <Input
-                    id="reviewComment"
-                    placeholder={
-                      isClient ? 'Cuenta cómo fue tu experiencia con el cuidador' : 'Cuenta cómo fue el servicio'
-                    }
-                    value={reviewComment}
-                    onChange={(e) => setReviewComment(e.target.value)}
-                  />
-                </Field>
-                <Button type="submit" loading={submittingReview}>
-                  Enviar reseña
-                </Button>
-              </form>
+            {/* Solo valora el cliente. El cuidador es el sujeto de la reseña, no
+                su autor: lee lo que le han puesto, pero no escribe sobre su
+                propia reserva ni sobre su cliente. */}
+            {!isClient && reviews.length === 0 && (
+              <p className="text-sm text-slate-500">
+                Todavía no has recibido la valoración de este servicio.
+              </p>
             )}
+
+            {isClient &&
+              (reviews.some((r) => r.authorId === userId) ? (
+                <p className="text-sm text-slate-500">Ya has dejado tu valoración de esta reserva.</p>
+              ) : (
+                <form onSubmit={(e) => void handleLeaveReview(e)} className="flex flex-col gap-3">
+                  <Field
+                    label="Tu valoración"
+                    htmlFor="reviewRating"
+                    hint={reviewRating === 0 ? 'Pulsa una estrella para puntuar el servicio.' : undefined}
+                  >
+                    <StarRating value={reviewRating} onChange={setReviewRating} size="lg" />
+                  </Field>
+                  <Field label="Comentario (opcional)" htmlFor="reviewComment">
+                    <Input
+                      id="reviewComment"
+                      placeholder="Cuenta cómo fue tu experiencia con el cuidador"
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                    />
+                  </Field>
+                  {/* La puntuación es obligatoria y no viene marcada por defecto:
+                      una nota puesta por descuido cuenta igual en la reputación
+                      del cuidador que una elegida a conciencia. */}
+                  <Button type="submit" loading={submittingReview} disabled={reviewRating === 0}>
+                    Enviar reseña
+                  </Button>
+                </form>
+              ))}
           </Card>
         )}
       </div>

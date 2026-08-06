@@ -37,4 +37,12 @@ public class ReviewPersistenceAdapter implements ReviewRepositoryPort {
         return repository.findBySubjectIdOrderByCreatedAtDesc(subjectId).stream()
                 .map(ReviewEntity::toDomain).toList();
     }
+
+    @Override
+    public List<SitterReputation> summarizePublicReputation() {
+        return repository.summarizeReputationExcluding(ReviewAuthorRole.SITTER).stream()
+                .map(row -> new SitterReputation(
+                        row.getSitterId(), row.getRatingSum(), (int) row.getReviewCount()))
+                .toList();
+    }
 }

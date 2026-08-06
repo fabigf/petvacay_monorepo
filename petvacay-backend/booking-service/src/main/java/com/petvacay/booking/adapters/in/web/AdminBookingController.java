@@ -5,6 +5,7 @@ import com.petvacay.booking.adapters.in.web.BookingDtos.ResolveDisputeRequest;
 import com.petvacay.booking.domain.model.BookingStatus;
 import com.petvacay.booking.ports.in.ManageBookingUseCase;
 import com.petvacay.booking.ports.in.QueryBookingUseCase;
+import com.petvacay.booking.ports.in.ReviewUseCase;
 import com.petvacay.shared.security.AuthenticatedUser;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,10 +35,13 @@ public class AdminBookingController {
 
     private final QueryBookingUseCase queryBooking;
     private final ManageBookingUseCase manageBooking;
+    private final ReviewUseCase reviews;
 
-    public AdminBookingController(QueryBookingUseCase queryBooking, ManageBookingUseCase manageBooking) {
+    public AdminBookingController(QueryBookingUseCase queryBooking, ManageBookingUseCase manageBooking,
+                                  ReviewUseCase reviews) {
         this.queryBooking = queryBooking;
         this.manageBooking = manageBooking;
+        this.reviews = reviews;
     }
 
     /**
@@ -49,6 +53,20 @@ public class AdminBookingController {
     public List<BookingDetailResponse> list(
             @RequestParam(defaultValue = "EN_DISPUTA") BookingStatus status) {
         return queryBooking.listByStatus(status).stream().map(BookingDetailResponse::from).toList();
+    }
+
+    /**
+     * Reconstruye en el buscador la reputacion de todos los cuidadores a partir
+     * de las resenas reales. Es la herramienta de reparacion para cuando la
+     * proyeccion se desincroniza del modelo de escritura; al republicar valores
+     * absolutos, ejecutarla de mas no hace daño.
+     */
+    @PostMapping("/reviews/reproject")
+    public ReprojectResponse reprojectReputations() {
+        return new ReprojectResponse(reviews.reprojectReputations());
+    }
+
+    public record ReprojectResponse(int sitters) {
     }
 
     @PostMapping("/{bookingId}/resolve-dispute")

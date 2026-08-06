@@ -30,6 +30,17 @@ public interface SitterCatalogPort {
             String firstName,
             boolean verified,
             Map<ServiceType, Money> servicePrices,
-            int maxSimultaneousPets) {
+            int maxSimultaneousPets,
+            /**
+             * Direccion completa del domicilio del cuidador. Se pide siempre —
+             * no hay una version "sin direccion" del contrato interno — pero
+             * solo llega a un cliente a traves de {@code QueryBookingUseCase
+             * .getHandoffInfo}, que exige que la reserva ya este pagada
+             * (negocio.md 4.2). Nada en booking-service la muestra antes de eso.
+             */
+            String fullAddress,
+            /** Coordenadas del domicilio, para los enlaces de mapa y Street View de la entrega. */
+            double latitude,
+            double longitude) {
     }
 }

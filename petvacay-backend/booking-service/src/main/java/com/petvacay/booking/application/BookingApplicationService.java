@@ -3,6 +3,7 @@ package com.petvacay.booking.application;
 import com.petvacay.booking.domain.model.Booking;
 import com.petvacay.booking.domain.model.BookingStatus;
 import com.petvacay.booking.domain.model.CancellationActor;
+import com.petvacay.booking.domain.model.HandoffWindow;
 import com.petvacay.booking.ports.in.CreateBookingUseCase;
 import com.petvacay.booking.ports.in.ManageBookingUseCase;
 import com.petvacay.booking.ports.in.QueryBookingUseCase;
@@ -44,6 +45,7 @@ public class BookingApplicationService implements CreateBookingUseCase, ManageBo
     private final ClientPetsPort clientPets;
     private final ReviewUseCase reviews;
     private final NotificationApplicationService notifier;
+    private final IncidentApplicationService incidents;
     private final BookingEventPublisherPort eventPublisher;
     private final Clock clock;
 
@@ -52,10 +54,12 @@ public class BookingApplicationService implements CreateBookingUseCase, ManageBo
                                      ClientPetsPort clientPets,
                                      ReviewUseCase reviews,
                                      NotificationApplicationService notifier,
+                                     IncidentApplicationService incidents,
                                      BookingEventPublisherPort eventPublisher,
                                      Clock clock) {
         this.reviews = reviews;
         this.notifier = notifier;
+        this.incidents = incidents;
         this.repository = repository;
         this.sitterCatalog = sitterCatalog;
         this.clientPets = clientPets;
@@ -113,6 +117,41 @@ public class BookingApplicationService implements CreateBookingUseCase, ManageBo
     }
 
     /**
+     * Plazas libres noche a noche, calculadas con la misma cuenta que valida una
+     * reserva: mismas reservas bloqueantes y misma capacidad del cuidador.
+     *
+     * <p>Reutilizar la cuenta es lo que garantiza que lo que se enseña coincida
+     * con lo que se aplica. Si el listado se calculara por su lado, cualquier
+     * matiz de la regla — que EN_DISPUTA siga bloqueando, que la ultima noche no
+     * cuente — tendria que recordarse en dos sitios y acabaria divergiendo.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<DailyAvailability> availability(UUID sitterId, LocalDate start, LocalDate end) {
+        SitterCatalogPort.SitterSummary sitter = sitterCatalog.findSitter(sitterId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "ERR_SITTER_NOT_FOUND", "No existe el cuidador " + sitterId));
+
+        DateRange range = DateRange.of(start, end);
+        List<Booking> blocking = repository.findCalendarBlockingBookings(sitterId, range);
+
+        List<DailyAvailability> availability = new java.util.ArrayList<>();
+        for (LocalDate night = range.start(); night.isBefore(range.end()); night = night.plusDays(1)) {
+            availability.add(new DailyAvailability(night, sitter.maxSimultaneousPets(),
+                    occupiedOn(blocking, night)));
+        }
+        return availability;
+    }
+
+    /** Mascotas ya comprometidas esa noche por las reservas que bloquean calendario. */
+    private static int occupiedOn(List<Booking> blocking, LocalDate night) {
+        return blocking.stream()
+                .filter(booking -> booking.dates().contains(night))
+                .mapToInt(booking -> booking.petIds().size())
+                .sum();
+    }
+
+    /**
      * Verifica noche a noche que la capacidad maxima de mascotas simultaneas del
      * cuidador no se supere (negocio.md seccion 4.2, bloqueo de calendario).
      */
@@ -120,11 +159,7 @@ public class BookingApplicationService implements CreateBookingUseCase, ManageBo
         List<Booking> blocking = repository.findCalendarBlockingBookings(sitter.sitterId(), dates);
 
         for (LocalDate night = dates.start(); night.isBefore(dates.end()); night = night.plusDays(1)) {
-            final LocalDate current = night;
-            int occupied = blocking.stream()
-                    .filter(b -> b.dates().contains(current))
-                    .mapToInt(b -> b.petIds().size())
-                    .sum();
+            int occupied = occupiedOn(blocking, night);
 
             if (occupied + petCount > sitter.maxSimultaneousPets()) {
                 throw BusinessRuleViolationException.conflict(
@@ -286,8 +321,10 @@ public class BookingApplicationService implements CreateBookingUseCase, ManageBo
 
     @Override
     @Transactional(readOnly = true)
-    public Booking getById(UUID bookingId) {
-        return load(bookingId);
+    public Booking getById(UUID bookingId, UUID actingUserId) {
+        Booking booking = load(bookingId);
+        requireParticipant(booking, actingUserId, null);
+        return booking;
     }
 
     @Override
@@ -306,6 +343,50 @@ public class BookingApplicationService implements CreateBookingUseCase, ManageBo
     @Transactional(readOnly = true)
     public List<Booking> listByStatus(BookingStatus status) {
         return repository.findByStatus(status);
+    }
+
+    /**
+     * Fichas de las mascotas de la reserva. Las ven sus dos partes: el cliente
+     * porque son suyas y el cuidador porque se las van a confiar — sin conocer
+     * su peso, su especie o sus necesidades medicas no puede prepararse ni
+     * decidir si acepta.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public List<ClientPetsPort.PetDetails> listPetsOfBooking(UUID bookingId, UUID actingUserId) {
+        Booking booking = load(bookingId);
+        requireParticipant(booking, actingUserId, null);
+        return clientPets.detailsOf(booking.petIds());
+    }
+
+    /**
+     * Direccion del cuidador y franja de entrega/recogida (negocio.md 4.2 y 5).
+     *
+     * <p>Se comprueba {@code isFunded()} y no un estado concreto porque son
+     * varios los estados en los que la logistica ya importa: en
+     * {@code CONFIRMADO} para prepararse, en {@code EN_PROGRESO} porque el
+     * servicio esta en marcha, y hasta en {@code EN_DISPUTA} o
+     * {@code FINALIZADO} porque la informacion ya se entrego y no tiene sentido
+     * ocultarla retroactivamente.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public HandoffInfo getHandoffInfo(UUID bookingId, UUID actingUserId) {
+        Booking booking = load(bookingId);
+        requireParticipant(booking, actingUserId, null);
+
+        if (!booking.status().isFunded()) {
+            throw BusinessRuleViolationException.conflict(
+                    "ERR_HANDOFF_NOT_AVAILABLE", "Todavía no disponible",
+                    "La dirección de entrega se comparte en cuanto el pago queda confirmado.");
+        }
+
+        SitterCatalogPort.SitterSummary sitter = sitterCatalog.findSitter(booking.sitterId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "ERR_SITTER_NOT_FOUND", "No existe el cuidador " + booking.sitterId()));
+
+        return new HandoffInfo(sitter.fullAddress(), sitter.latitude(), sitter.longitude(),
+                HandoffWindow.forBooking(booking));
     }
 
     private Booking mutate(UUID bookingId, UUID actingUserId, CancellationActor requiredRole,
@@ -363,6 +444,7 @@ public class BookingApplicationService implements CreateBookingUseCase, ManageBo
         Booking saved = repository.save(booking);
         List<DomainEvent> events = booking.pullPendingEvents();
         notifier.recordAll(events);
+        incidents.recordAll(events);
         eventPublisher.publish(events);
         return saved;
     }

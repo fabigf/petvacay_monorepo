@@ -19,6 +19,22 @@ export async function searchSitters(
  * ver NominatimGeocodingAdapter). Devuelve `null` en vez de lanzar cuando no
  * se encuentra nada — no es un error de red, es "esa dirección no existe".
  */
+/**
+ * Candidatos para un texto a medio escribir. Devuelve lista vacía en vez de
+ * fallar cuando no hay coincidencias: un autocompletado se consulta en cada
+ * pulsación y "todavía no hay nada" es el caso normal, no un error.
+ */
+export async function suggestAddresses(query: string): Promise<GeocodeResult[]> {
+  try {
+    const { data } = await apiClient.get<GeocodeResult[]>('/search/geocode/suggest', {
+      params: { q: query },
+    })
+    return data
+  } catch {
+    return []
+  }
+}
+
 export async function geocodeAddress(query: string): Promise<GeocodeResult | null> {
   try {
     const { data } = await apiClient.get<GeocodeResult>('/search/geocode', {

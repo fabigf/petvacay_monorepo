@@ -2,11 +2,14 @@ package com.petvacay.identity.ports.in;
 
 import com.petvacay.identity.domain.model.HomeType;
 import com.petvacay.identity.domain.model.Pet;
+import com.petvacay.identity.domain.model.Role;
 import com.petvacay.identity.domain.model.ServiceType;
 import com.petvacay.identity.domain.model.SitterProfile;
 import com.petvacay.identity.domain.model.Sociability;
 import com.petvacay.identity.domain.model.Species;
 import com.petvacay.identity.domain.model.UserAccount;
+import com.petvacay.identity.domain.model.VerificationStatus;
+import com.petvacay.shared.domain.Page;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -72,6 +75,14 @@ public final class IdentityUseCases {
 
         List<Pet> listPets(UUID ownerId);
 
+        /**
+         * Fichas de un conjunto concreto de mascotas. Lo consume el contrato
+         * interno que usa booking-service para enseñarle al cuidador a que
+         * animal se compromete; la autorizacion la aplica alli, que es quien
+         * sabe si quien pregunta es parte de esa reserva.
+         */
+        List<Pet> findByIds(List<UUID> petIds);
+
         void removePet(UUID ownerId, UUID petId);
 
         record AddPetCommand(
@@ -114,6 +125,9 @@ public final class IdentityUseCases {
                 HomeType homeType,
                 double latitude,
                 double longitude,
+                String address,
+                String streetNumber,
+                String floorDoor,
                 Map<ServiceType, BigDecimal> servicePrices,
                 int maxSimultaneousPets,
                 Set<Species> acceptedSpecies,
@@ -127,6 +141,9 @@ public final class IdentityUseCases {
                 HomeType homeType,
                 double latitude,
                 double longitude,
+                String address,
+                String streetNumber,
+                String floorDoor,
                 Map<ServiceType, BigDecimal> servicePrices,
                 int maxSimultaneousPets,
                 Set<Species> acceptedSpecies,
@@ -142,6 +159,22 @@ public final class IdentityUseCases {
     public interface UserModerationUseCase {
 
         /**
+         * Cuentas de la plataforma, paginadas y filtrables por texto libre
+         * (nombre, apellidos, email), por rol y por si estan activas.
+         */
+        Page<UserAccount> listUsers(UserQuery query);
+
+        /**
+         * @param role   rol exigido, o {@code null} para no filtrar por rol.
+         * @param active {@code null} para incluir tanto activas como expulsadas.
+         */
+        record UserQuery(String text, Role role, Boolean active, int page, int size) {
+        }
+
+        /** Corrige los datos de contacto de una cuenta desde el back-office. */
+        UserAccount updateContactDetails(UpdateUserCommand command);
+
+        /**
          * Desactiva la cuenta y revoca sus tokens de refresco, de modo que la
          * sesion abierta no pueda renovarse. El token de acceso ya emitido sigue
          * siendo valido hasta que caduca (minutos): es el precio conocido de una
@@ -149,6 +182,12 @@ public final class IdentityUseCases {
          * consultar la base de datos de identidad desde los cuatro servicios.
          */
         UserAccount deactivate(UUID userId);
+
+        /** Deshace una expulsion: el borrado es logico, no destructivo. */
+        UserAccount reactivate(UUID userId);
+
+        record UpdateUserCommand(UUID userId, String email, String firstName, String lastName) {
+        }
     }
 
     /** Operaciones reservadas al administrador de la plataforma. */
@@ -159,5 +198,29 @@ public final class IdentityUseCases {
         SitterProfile reject(UUID sitterId, String reason);
 
         List<SitterProfile> listPendingVerification();
+
+        /**
+         * Ficha completa de un cuidador para el back-office: su perfil publicado
+         * junto a los datos de la cuenta que hay detras.
+         *
+         * <p>Van juntos porque el administrador que verifica un KYC necesita
+         * exactamente eso: contrastar el documento subido con el nombre real de
+         * la persona. Repartido en dos llamadas, la pantalla tendria que
+         * recomponerlo y podria enseñar una a medias.
+         */
+        SitterDossier getDossier(UUID sitterId);
+
+        /**
+         * Cuidadores paginados, con filtro por estado de verificacion y por texto
+         * libre sobre nombre, apellidos y email.
+         */
+        Page<SitterDossier> searchSitters(SitterQuery query);
+
+        record SitterQuery(VerificationStatus status, String text, int page, int size) {
+        }
+
+        /** Perfil de cuidador y cuenta asociada, resueltos de una vez. */
+        record SitterDossier(SitterProfile profile, UserAccount account) {
+        }
     }
 }

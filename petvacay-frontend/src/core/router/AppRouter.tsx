@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '@/shared/components/AppLayout'
 import { ProtectedRoute } from '@/core/router/ProtectedRoute'
 import { HomePage } from '@/modules/home/HomePage'
@@ -11,6 +11,13 @@ import { BookingDetailPage } from '@/modules/bookings/BookingDetailPage'
 import { SitterOnboardingPage } from '@/modules/onboarding/SitterOnboardingPage'
 import { PetsPage } from '@/modules/pets/PetsPage'
 import { AdminPage } from '@/modules/admin/AdminPage'
+import { TermsPage } from '@/modules/legal/TermsPage'
+import { PrivacyPage } from '@/modules/legal/PrivacyPage'
+import { CookiesPage } from '@/modules/legal/CookiesPage'
+import { FaqPage } from '@/modules/legal/FaqPage'
+import { HowItWorksPage } from '@/modules/legal/HowItWorksPage'
+import { ContactPage } from '@/modules/legal/ContactPage'
+import { NotFoundPage } from '@/modules/legal/NotFoundPage'
 
 export function AppRouter() {
   return (
@@ -22,6 +29,15 @@ export function AppRouter() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+
+          {/* Informativas y legales. Rutas en español porque son las que se
+              comparten y aparecen en buscadores. */}
+          <Route path="/como-funciona" element={<HowItWorksPage />} />
+          <Route path="/faq" element={<FaqPage />} />
+          <Route path="/terminos" element={<TermsPage />} />
+          <Route path="/privacidad" element={<PrivacyPage />} />
+          <Route path="/cookies" element={<CookiesPage />} />
+          <Route path="/contacto" element={<ContactPage />} />
 
           {/* Rutas protegidas */}
           <Route
@@ -76,7 +92,7 @@ export function AppRouter() {
             }
           />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -223,7 +223,8 @@ public class Booking {
         }
         this.status = BookingStatus.EN_DISPUTA;
         this.disputeReason = reason;
-        raise(new BookingEvents.DisputaAbiertaEvent(UUID.randomUUID(), now, id, openedBy, reason));
+        raise(new BookingEvents.DisputaAbiertaEvent(UUID.randomUUID(), now, id, clientId, sitterId,
+                openedBy, reason));
     }
 
     /**

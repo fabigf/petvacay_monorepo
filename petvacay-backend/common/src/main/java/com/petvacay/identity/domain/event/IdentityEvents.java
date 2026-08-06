@@ -37,6 +37,33 @@ public final class IdentityEvents {
     private IdentityEvents() {
     }
 
+    /**
+     * Un cuidador ha subido su documento y espera verificacion.
+     *
+     * <p>Nace con el centro de notificaciones: la solicitud existia desde la
+     * Fase 1, pero nadie avisaba de ella. El administrador solo se enteraba si
+     * entraba al panel por su cuenta a mirar si habia algo pendiente, que es
+     * justo lo contrario de como debe funcionar una bandeja de trabajo.
+     */
+    public record CuidadorPendienteVerificacionEvent(
+            UUID eventId,
+            Instant occurredAt,
+            UUID sitterId,
+            String sitterName) implements DomainEvent {
+
+        public static final String TOPIC = "petvacay.identity.cuidador-pendiente-verificacion";
+
+        @Override
+        public String eventName() {
+            return TOPIC;
+        }
+
+        @Override
+        public UUID aggregateId() {
+            return sitterId;
+        }
+    }
+
     /** El administrador aprobo el KYC: el cuidador pasa a ser indexable. */
     public record CuidadorVerificadoEvent(UUID eventId, Instant occurredAt, UUID sitterId) implements DomainEvent {
 

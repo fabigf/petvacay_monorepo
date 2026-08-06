@@ -1,7 +1,10 @@
 import apiClient from '@/core/api/apiClient'
 import type {
   BookingDetail,
+  BookingHandoff,
+  BookingPet,
   CreateBookingRequest,
+  DailyAvailability,
   CreateBookingResponse,
 } from '@/core/api/types'
 
@@ -16,6 +19,48 @@ export async function createBooking(
 
 export async function getBooking(bookingId: string): Promise<BookingDetail> {
   const { data } = await apiClient.get<BookingDetail>(`/bookings/${bookingId}`)
+  return data
+}
+
+/**
+ * Fichas de las mascotas de la reserva. Las ven sus dos partes: el cliente
+ * porque son suyas y el cuidador porque se las van a confiar — sin conocer la
+ * especie, el peso o las necesidades médicas no puede prepararse (negocio.md 2.1).
+ *
+ * Es una llamada aparte y no parte del detalle porque las mascotas viven en otro
+ * servicio: incrustarlas obligaría a esperar esa consulta en cada lectura de una
+ * reserva, incluido el listado, que no las necesita.
+ */
+export async function listBookingPets(bookingId: string): Promise<BookingPet[]> {
+  const { data } = await apiClient.get<BookingPet[]>(`/bookings/${bookingId}/pets`)
+  return data
+}
+
+/**
+ * Plazas libres del cuidador noche a noche en el rango indicado.
+ *
+ * Permite avisar de que no hay hueco ANTES de enviar la solicitud, en vez de
+ * que el cliente rellene el formulario entero y reciba un 409 al confirmarlo.
+ */
+export async function getAvailability(
+  sitterId: string,
+  startDate: string,
+  endDate: string,
+): Promise<DailyAvailability[]> {
+  const { data } = await apiClient.get<DailyAvailability[]>('/bookings/availability', {
+    params: { sitterId, startDate, endDate },
+  })
+  return data
+}
+
+/**
+ * Dirección exacta del cuidador y franja de entrega/recogida (negocio.md 4.2 y
+ * 5). El backend la rechaza con 409 (`ERR_HANDOFF_NOT_AVAILABLE`) mientras la
+ * reserva no esté pagada; ese caso se deja para que lo gestione quien llama, no
+ * se resuelve aquí a `null` en silencio.
+ */
+export async function getBookingHandoff(bookingId: string): Promise<BookingHandoff> {
+  const { data } = await apiClient.get<BookingHandoff>(`/bookings/${bookingId}/handoff`)
   return data
 }
 

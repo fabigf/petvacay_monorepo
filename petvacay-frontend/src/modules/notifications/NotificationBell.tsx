@@ -7,8 +7,15 @@ import {
 } from '@/modules/notifications/notificationsApi'
 import type { Notification, NotificationType } from '@/core/api/types'
 
-/** Cada cuánto se vuelve a preguntar por avisos nuevos, en milisegundos. */
-const POLL_INTERVAL_MS = 60_000
+/**
+ * Cada cuánto se vuelve a preguntar por avisos nuevos, en milisegundos.
+ *
+ * <p>Un minuto era demasiado: quien acaba de hacer algo y va a comprobar que ha
+ * llegado el aviso da por hecho que no funciona mucho antes de que pase. Es una
+ * petición muy barata (una consulta por índice sobre la tabla de avisos), así
+ * que la ventana se acorta; además, abrir la campana fuerza un refresco.
+ */
+const POLL_INTERVAL_MS = 20_000
 
 /**
  * Icono por tipo. Se elige aquí y no en el backend porque es decoración de esta
@@ -25,6 +32,23 @@ const icons: Record<NotificationType, string> = {
   DISPUTE_OPENED: '⚠️',
   DISPUTE_RESOLVED: '⚖️',
   PET_EMERGENCY: '🆘',
+  SITTER_PENDING_REVIEW: '🪪',
+  SITTER_APPROVED: '🎉',
+  SITTER_REJECTED: '❌',
+}
+
+/**
+ * A dónde lleva pulsar un aviso. Casi todos cuelgan de una reserva, pero los de
+ * verificación no: un aviso que no se puede accionar obliga a buscar a mano la
+ * pantalla donde resolverlo, que es justo lo que la campana debería ahorrar.
+ */
+function destinationFor(notification: Notification): string | null {
+  if (notification.bookingId) return `/bookings/${notification.bookingId}`
+  if (notification.type === 'SITTER_PENDING_REVIEW') return '/admin'
+  if (notification.type === 'SITTER_APPROVED' || notification.type === 'SITTER_REJECTED') {
+    return '/dashboard/sitter'
+  }
+  return null
 }
 
 function relativeTime(iso: string): string {
@@ -86,7 +110,8 @@ export function NotificationBell() {
       )
       await markNotificationRead(notification.notificationId).catch(() => refresh())
     }
-    if (notification.bookingId) navigate(`/bookings/${notification.bookingId}`)
+    const destination = destinationFor(notification)
+    if (destination) navigate(destination)
   }
 
   const handleMarkAllRead = async () => {
@@ -98,7 +123,13 @@ export function NotificationBell() {
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          // Al abrirla se pide de nuevo: es el momento exacto en que alguien
+          // quiere saber si hay algo, y esperar al siguiente sondeo haría
+          // parecer que no llega nada.
+          if (!open) refresh()
+          setOpen((current) => !current)
+        }}
         aria-label={unread > 0 ? `Notificaciones (${unread} sin leer)` : 'Notificaciones'}
         aria-expanded={open}
         className="relative rounded-lg px-2 py-2 text-lg text-slate-600 transition hover:bg-slate-100"

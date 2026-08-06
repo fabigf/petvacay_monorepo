@@ -24,6 +24,7 @@ import com.petvacay.identity.ports.out.IdentityPorts.UserRepositoryPort;
 import com.petvacay.shared.domain.BusinessRuleViolationException;
 import com.petvacay.shared.domain.DomainEvent;
 import com.petvacay.shared.domain.Money;
+import com.petvacay.shared.domain.Page;
 import com.petvacay.shared.domain.ResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -238,6 +239,12 @@ public class IdentityApplicationService
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<Pet> findByIds(List<UUID> petIds) {
+        return petIds == null || petIds.isEmpty() ? List.of() : pets.findAllById(petIds);
+    }
+
+    @Override
     @Transactional
     public void removePet(UUID ownerId, UUID petId) {
         Pet pet = pets.findById(petId).orElseThrow(() -> new ResourceNotFoundException(
@@ -266,7 +273,8 @@ public class IdentityApplicationService
         }
 
         SitterProfile profile = SitterProfile.create(command.sitterId(), command.description(),
-                command.homeType(), new GeoLocation(command.latitude(), command.longitude()),
+                command.homeType(), new GeoLocation(command.latitude(), command.longitude(), command.address(),
+                        command.streetNumber(), command.floorDoor()),
                 toMoneyMap(command.servicePrices()), command.maxSimultaneousPets(),
                 command.acceptedSpecies(), command.maxPetWeightKg(), command.photoUrl());
 
@@ -278,7 +286,8 @@ public class IdentityApplicationService
     public SitterProfile updateProfile(UpdateSitterProfileCommand command) {
         SitterProfile profile = requireSitter(command.sitterId());
         profile.updatelisting(command.description(), command.homeType(),
-                new GeoLocation(command.latitude(), command.longitude()),
+                new GeoLocation(command.latitude(), command.longitude(), command.address(),
+                        command.streetNumber(), command.floorDoor()),
                 toMoneyMap(command.servicePrices()), command.maxSimultaneousPets(),
                 command.acceptedSpecies(), command.maxPetWeightKg(), command.photoUrl(), clock.instant());
         return persist(profile);
@@ -298,7 +307,20 @@ public class IdentityApplicationService
     public SitterProfile submitIdentityDocument(UUID sitterId, String documentReference) {
         SitterProfile profile = requireSitter(sitterId);
         profile.submitIdentityDocument(documentReference);
-        return persist(profile);
+        SitterProfile saved = persist(profile);
+
+        // El evento lo publica el servicio y no el agregado porque lleva el
+        // nombre del cuidador, que vive en otro agregado (la cuenta). Es el mismo
+        // criterio que enrichForIntegration: el perfil no tiene por que conocer
+        // datos ajenos para poder anunciarse.
+        String sitterName = users.findById(sitterId)
+                .map(account -> account.firstName() + " " + account.lastName())
+                .orElse("Un cuidador");
+
+        eventPublisher.publish(List.of(new IdentityEvents.CuidadorPendienteVerificacionEvent(
+                UUID.randomUUID(), clock.instant(), sitterId, sitterName)));
+
+        return saved;
     }
 
     @Override
@@ -330,6 +352,45 @@ public class IdentityApplicationService
      * de que nadie mirara si su cuenta sigue activa.
      */
     @Override
+    @Transactional(readOnly = true)
+    public Page<UserAccount> listUsers(UserQuery query) {
+        return users.search(query.text(), query.role(), query.active(), query.page(), query.size());
+    }
+
+    /**
+     * Correccion de los datos de contacto desde el back-office.
+     *
+     * <p>La unicidad del email se comprueba aqui y no en el agregado porque es
+     * una regla sobre el conjunto de cuentas, no sobre una sola: sin ella, dos
+     * usuarios podrian acabar con el mismo email y el login dejaria de saber a
+     * quien autenticar.
+     */
+    @Override
+    @Transactional
+    public UserAccount updateContactDetails(UpdateUserCommand command) {
+        UserAccount user = requireUser(command.userId());
+
+        String newEmail = command.email() == null ? null : command.email().toLowerCase();
+        if (newEmail != null && !newEmail.equals(user.email()) && users.existsByEmail(newEmail)) {
+            throw BusinessRuleViolationException.conflict(
+                    "ERR_EMAIL_ALREADY_REGISTERED", "Email ya registrado",
+                    "Ya existe otra cuenta asociada a ese correo electrónico.");
+        }
+
+        user.updateContactDetails(newEmail, command.firstName(), command.lastName());
+        return users.save(user);
+    }
+
+    @Override
+    @Transactional
+    public UserAccount reactivate(UUID userId) {
+        UserAccount user = requireUser(userId);
+        user.reactivate();
+        log.info("Cuenta {} reactivada por un administrador", userId);
+        return users.save(user);
+    }
+
+    @Override
     @Transactional
     public UserAccount deactivate(UUID userId) {
         UserAccount user = requireUser(userId);
@@ -352,14 +413,64 @@ public class IdentityApplicationService
         return sitters.findByVerificationStatusPending();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public SitterDossier getDossier(UUID sitterId) {
+        return new SitterDossier(requireSitter(sitterId), requireUser(sitterId));
+    }
+
+    /**
+     * Cuidadores paginados para el back-office, cada uno con la cuenta que hay
+     * detras.
+     *
+     * <p>Las cuentas se cargan de una vez para toda la pagina en lugar de una
+     * por perfil: son como mucho unas decenas de filas y asi el listado hace dos
+     * consultas en total, no una por cuidador.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Page<SitterDossier> searchSitters(SitterQuery query) {
+        Page<SitterProfile> profiles =
+                sitters.search(query.status(), query.text(), query.page(), query.size());
+
+        Map<UUID, UserAccount> accounts = users
+                .findAllById(profiles.content().stream().map(SitterProfile::sitterId).toList())
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(UserAccount::id, account -> account));
+
+        List<SitterDossier> dossiers = profiles.content().stream()
+                .map(profile -> new SitterDossier(profile, accounts.get(profile.sitterId())))
+                .toList();
+
+        return Page.of(dossiers, profiles.page(), profiles.size(), profiles.totalElements());
+    }
+
     private SitterProfile persist(SitterProfile profile) {
         SitterProfile saved = sitters.save(profile);
         List<DomainEvent> events = profile.pullPendingEvents().stream()
-                .map(event -> enrichForIntegration(event, saved))
-                .filter(java.util.Objects::nonNull)
+                .flatMap(event -> publishableFor(event, saved).stream())
                 .toList();
         eventPublisher.publish(events);
         return saved;
+    }
+
+    /**
+     * Que se publica realmente por cada evento que levanta el agregado.
+     *
+     * <p>{@code CuidadorVerificadoEvent} sale ademas de su version enriquecida y
+     * no en lugar de ella: son dos cosas distintas. El hecho de negocio ("este
+     * cuidador ha sido verificado") es lo que dispara el aviso al interesado,
+     * mientras que {@code CuidadorIndexadoEvent} es un evento de integracion para
+     * que el buscador reproyecte. Cuando solo se publicaba el segundo, el
+     * cuidador aprobado no se enteraba de que ya podia trabajar.
+     */
+    private List<DomainEvent> publishableFor(DomainEvent event, SitterProfile profile) {
+        DomainEvent enriched = enrichForIntegration(event, profile);
+
+        if (event instanceof IdentityEvents.CuidadorVerificadoEvent) {
+            return enriched == null ? List.of(event) : List.of(event, enriched);
+        }
+        return enriched == null ? List.of() : List.of(enriched);
     }
 
     /**

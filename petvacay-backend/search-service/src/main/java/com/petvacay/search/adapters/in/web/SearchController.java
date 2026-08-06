@@ -56,4 +56,17 @@ public class SearchController {
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
+
+    /**
+     * Candidatos para un texto a medio escribir: alimenta el autocompletado de
+     * direcciones del formulario de perfil del cuidador.
+     *
+     * <p>Devuelve una lista vacia — no un 404 — cuando no hay coincidencias: un
+     * autocompletado se consulta constantemente mientras se teclea y "todavia no
+     * hay nada que sugerir" es el caso normal, no un error.
+     */
+    @GetMapping("/geocode/suggest")
+    public List<GeocodeAddressUseCase.GeocodeResult> suggest(@RequestParam String q) {
+        return geocodeAddress.suggest(q);
+    }
 }

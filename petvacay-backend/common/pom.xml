@@ -44,5 +44,16 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
         </dependency>
+        <!--
+            Money y DateRange son los tipos sobre los que descansan el dinero y el
+            calendario de toda la plataforma, asi que este modulo tambien necesita
+            poder probarse. Solo JUnit y AssertJ: aqui no hay contexto de Spring
+            que levantar.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>

@@ -90,6 +90,7 @@ Toda interacción de reserva sigue una máquina de estados controlada por evento
 
 * **Expiración de Solicitud:** Si el cuidador no responde a una solicitud en un plazo máximo de 24 horas, el sistema cancela automáticamente el proceso para no bloquear la búsqueda del cliente.
 * **Bloqueo de Calendario:** En el instante en que una reserva pasa al estado `CONFIRMADO`, los días implicados quedan automáticamente bloqueados en el calendario de ese cuidador en MongoDB, impidiendo que reciba otras solicitudes simultáneas que excedan su capacidad máxima de mascotas.
+* **Franja de entrega y recogida:** No estaba especificada en el diseño original; se fija aquí como decisión de producto al implementarla. La mascota se entrega el día de inicio de la reserva y se recoge el día de fin, ambos dentro de una franja horaria fija y razonable de **09:00 a 20:00**. Es una franja única de la plataforma, no configurable todavía por cuidador — queda como mejora futura ligarla al horario real de cada cuidador. La dirección exacta y esta franja solo se revelan al cliente **a partir de `CONFIRMADO`** (pago ya retenido en custodia): antes de eso, incluida la fase de solicitud, el cliente solo ve la distancia aproximada del cuidador, nunca su domicilio — evita que cualquiera con una cuenta pueda averiguar dónde vive un cuidador sin haber llegado siquiera a pagar.
 
 ### 4.3. Políticas de Cancelación y Reembolsos
 * **Cancelación con Antelación (> 48 horas del inicio):** Si el cliente cancela la reserva antes de las 48 horas del inicio del servicio, recibe un reembolso del 100% de la tarifa base. La tasa de gestión del 5% no es reembolsable.
@@ -109,7 +110,7 @@ La lógica del negocio se propaga de manera asíncrona mediante eventos de domin
 
 * **`ReservaSolicitadaEvent`:** Dispara el envío de notificaciones push y correos electrónicos de alta prioridad al cuidador para indicarle que tiene una propuesta pendiente de aprobación.
 * **`PagoConfirmadoEvent`:** Evento vital que indica el éxito financiero. Dispara de forma paralela tres acciones:
-    1. Envía la confirmación al cliente con los datos exactos de la dirección de entrega de la mascota.
+    1. Envía la confirmación al cliente con los datos exactos de la dirección de entrega de la mascota, junto con la franja horaria de entrega y recogida (ver 4.2, "Franja de entrega y recogida").
     2. Envía un comando al servicio de búsquedas para actualizar el calendario de disponibilidad del cuidador en la base de datos de lectura.
     3. Inicia un temporizador programado (Scheduler) en el servicio de pagos para ejecutar la liberación del dinero una vez expire el servicio.
 * **`MascotaEnPeligroEvent` (Urgencia):** Evento emitido si el cuidador pulsa el botón de alerta médica. Notifica de inmediato al dueño por todos los canales (SMS, Push, Llamada automatizada), habilita un canal de mensajería prioritario con el contacto de emergencia alternativo y envía un aviso al equipo de soporte de la plataforma para coordinar asistencia veterinaria local si fuera necesario.

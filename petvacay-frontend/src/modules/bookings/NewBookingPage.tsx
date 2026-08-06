@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { createBooking } from './bookingsApi'
+import { AvailabilityCalendar } from './AvailabilityCalendar'
 import { listPets } from '@/modules/pets/petsApi'
 import { getSitterProfile } from '@/modules/onboarding/onboardingApi'
 import { listReviewsForSitter } from '@/modules/reviews/reviewsApi'
 import type { Pet, Review, ServiceType, SitterProfile } from '@/core/api/types'
-import { Button, Card, EmptyState, Field, Input, Select, Skeleton } from '@/shared/components/ui'
+import { Button, Card, EmptyState, Field, Select, Skeleton } from '@/shared/components/ui'
 import { StarRating } from '@/shared/components/StarRating'
 import { useProblemToast } from '@/shared/hooks/useProblemToast'
 
@@ -16,13 +17,8 @@ const serviceTypeLabels: Record<ServiceType, string> = {
   WALKING: 'Paseos por horas',
 }
 
-function todayPlus(days: number): string {
-  const date = new Date()
-  date.setDate(date.getDate() + days)
-  return date.toISOString().slice(0, 10)
-}
-
 function nightsBetween(start: string, end: string): number {
+  if (!start || !end) return 0
   const diff = new Date(end).getTime() - new Date(start).getTime()
   return Math.max(0, Math.round(diff / 86_400_000))
 }
@@ -48,8 +44,10 @@ export function NewBookingPage() {
   const [reviews, setReviews] = useState<Review[]>([])
 
   const [selectedPets, setSelectedPets] = useState<string[]>([])
-  const [startDate, setStartDate] = useState(todayPlus(7))
-  const [endDate, setEndDate] = useState(todayPlus(14))
+  // Sin valor por defecto: con el calendario bloqueando días sin sitio, un
+  // rango precargado podría no ser válido y habría que limpiarlo igualmente.
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [serviceType, setServiceType] = useState<ServiceType>('NIGHT_ACCOMMODATION')
 
   useEffect(() => {
@@ -213,28 +211,40 @@ export function NewBookingPage() {
             </div>
           </fieldset>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Entrada" htmlFor="startDate" error={fieldErrors.startDate}>
-              <Input
-                id="startDate"
-                type="date"
-                required
-                value={startDate}
-                aria-invalid={Boolean(fieldErrors.startDate)}
-                onChange={(e) => setStartDate(e.target.value)}
+          {/* Calendario en vez de dos <input type="date">: un input nativo no
+              puede deshabilitar días concretos, solo acotar con min/max, así
+              que no hay forma de "no dejar seleccionar" una fecha sin hueco
+              para las mascotas elegidas — solo de avisar después. Por eso
+              también depende de `selectedPets`: la disponibilidad se
+              recalcula por número de mascotas, no solo por fechas. */}
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1 text-sm font-medium text-slate-700">Fechas</legend>
+            {sitterId && (
+              <AvailabilityCalendar
+                sitterId={sitterId}
+                petCount={Math.max(selectedPets.length, 1)}
+                startDate={startDate}
+                endDate={endDate}
+                error={fieldErrors.startDate ?? fieldErrors.endDate}
+                onSelect={(start, end) => {
+                  setStartDate(start)
+                  setEndDate(end)
+                }}
+                onInvalidSelection={() => {
+                  setStartDate('')
+                  setEndDate('')
+                  toast.error('Ya no hay sitio en esas fechas', {
+                    description: 'Con las mascotas que has marcado ya no cabe ese rango. Elige otras fechas.',
+                  })
+                }}
               />
-            </Field>
-            <Field label="Salida" htmlFor="endDate" error={fieldErrors.endDate}>
-              <Input
-                id="endDate"
-                type="date"
-                required
-                value={endDate}
-                aria-invalid={Boolean(fieldErrors.endDate)}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </Field>
-          </div>
+            )}
+            <p className="text-xs text-slate-500">
+              {!startDate && 'Elige la fecha de entrada.'}
+              {startDate && !endDate && 'Ahora elige la fecha de salida.'}
+              {startDate && endDate && `${nights} ${nights === 1 ? 'noche' : 'noches'} seleccionadas.`}
+            </p>
+          </fieldset>
 
           <Field
             label="Tipo de servicio"
@@ -268,7 +278,14 @@ export function NewBookingPage() {
               {selectedServicePrice !== undefined && (
                 <>
                   {' '}
-                  · <strong>{(selectedServicePrice * Math.max(nights, 1)).toFixed(2)} €</strong> estimado
+                  ·{' '}
+                  <strong>
+                    {/* Igual que PricingPolicy.quote en el backend: la tarifa es
+                        por mascota y por noche, así que el estimado tiene que
+                        multiplicar por las dos, no solo por las noches. */}
+                    {(selectedServicePrice * Math.max(nights, 1) * Math.max(selectedPets.length, 1)).toFixed(2)} €
+                  </strong>{' '}
+                  estimado
                 </>
               )}
             </p>
@@ -278,7 +295,14 @@ export function NewBookingPage() {
             </p>
           </div>
 
-          <Button type="submit" loading={submitting} disabled={selectedPets.length === 0}>
+          {/* Ya no hace falta avisar de que faltan plazas: el calendario no
+              deja elegir un rango sin hueco para las mascotas marcadas, así
+              que si se llega aquí con fechas puestas, caben. */}
+          <Button
+            type="submit"
+            loading={submitting}
+            disabled={selectedPets.length === 0 || !startDate || !endDate}
+          >
             Enviar solicitud
           </Button>
         </form>

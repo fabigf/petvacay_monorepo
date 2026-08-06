@@ -65,6 +65,14 @@ public interface SitterReadModelPort {
     void recordReview(UUID sitterId, int rating);
 
     /**
+     * Fija la reputacion completa de un cuidador con valores absolutos, en lugar
+     * de sumar uno mas. Es la operacion con la que se reconstruye la proyeccion
+     * cuando se ha desincronizado del modelo de escritura; al ser un {@code $set}
+     * y no un {@code $inc}, repetirla no altera el resultado.
+     */
+    void setReputation(UUID sitterId, long ratingSum, int reviewCount);
+
+    /**
      * Anota que el cuidador cancelo una reserva ya confirmada, lo que le penaliza
      * en el orden del listado (negocio.md 4.3). Tambien con {@code $inc} atomico,
      * por el mismo motivo que el resto de contadores.

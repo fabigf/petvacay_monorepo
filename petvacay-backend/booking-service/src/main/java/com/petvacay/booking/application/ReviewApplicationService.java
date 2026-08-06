@@ -49,24 +49,28 @@ public class ReviewApplicationService implements ReviewUseCase {
     public Review leaveReview(UUID bookingId, UUID authorId, int rating, String comment) {
         Booking booking = loadBooking(bookingId);
 
+        // Quien puede valorar se comprueba ANTES que el estado de la reserva: a
+        // un cuidador hay que decirle que el no valora, no que "todavia no ha
+        // terminado el servicio", porque lo segundo sugiere que mas adelante si
+        // podra. Solo valora el cliente; el cuidador es el sujeto de la resena,
+        // nunca su autor, o podria influir en su propia reputacion publica.
+        if (booking.sitterId().equals(authorId)) {
+            throw new BusinessRuleViolationException("ERR_SITTER_CANNOT_REVIEW", "Acción no permitida", 403,
+                    "Como cuidador puedes leer las valoraciones que recibes, pero no escribir ninguna.");
+        }
+        if (!booking.clientId().equals(authorId)) {
+            throw new BusinessRuleViolationException("ERR_NOT_BOOKING_PARTICIPANT", "Acceso denegado", 403,
+                    "Esta reserva no te pertenece.");
+        }
+
         if (booking.status() != BookingStatus.FINALIZADO) {
             throw BusinessRuleViolationException.conflict(
                     "ERR_REVIEW_BOOKING_NOT_FINISHED", "Reserva no finalizada",
                     "Solo se puede valorar una reserva una vez ha finalizado el servicio.");
         }
 
-        ReviewAuthorRole role;
-        UUID subjectId;
-        if (booking.clientId().equals(authorId)) {
-            role = ReviewAuthorRole.CLIENT;
-            subjectId = booking.sitterId();
-        } else if (booking.sitterId().equals(authorId)) {
-            role = ReviewAuthorRole.SITTER;
-            subjectId = booking.clientId();
-        } else {
-            throw new BusinessRuleViolationException("ERR_NOT_BOOKING_PARTICIPANT", "Acceso denegado", 403,
-                    "Esta reserva no te pertenece.");
-        }
+        ReviewAuthorRole role = ReviewAuthorRole.CLIENT;
+        UUID subjectId = booking.sitterId();
 
         if (reviews.existsByBookingIdAndAuthorRole(bookingId, role)) {
             throw BusinessRuleViolationException.conflict(
@@ -77,16 +81,27 @@ public class ReviewApplicationService implements ReviewUseCase {
         Review review = Review.create(bookingId, authorId, subjectId, role, rating, comment, now());
         Review saved = reviews.save(review);
 
-        // Solo la resena del CLIENTE hacia el cuidador tiene una vitrina publica
-        // (el buscador). La del cuidador hacia el cliente se guarda igual, pero
-        // ningun modelo de lectura la consume todavia: publicar ese evento no
-        // tendria ningun oyente.
-        if (role == ReviewAuthorRole.CLIENT) {
-            publish(new BookingEvents.ResenaCreadaEvent(
-                    UUID.randomUUID(), now(), bookingId, saved.id(), subjectId, rating));
-        }
+        publish(new BookingEvents.ResenaCreadaEvent(
+                UUID.randomUUID(), now(), bookingId, saved.id(), subjectId, rating));
 
         return saved;
+    }
+
+    /**
+     * Republica la reputacion acumulada de cada cuidador para que el buscador la
+     * reconstruya. Los valores son absolutos, asi que ejecutarlo dos veces deja
+     * el mismo resultado y no infla la nota de nadie.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public int reprojectReputations() {
+        List<ReviewRepositoryPort.SitterReputation> reputations = reviews.summarizePublicReputation();
+
+        reputations.forEach(reputation -> publish(new BookingEvents.ReputacionRecalculadaEvent(
+                UUID.randomUUID(), now(), reputation.sitterId(),
+                reputation.ratingSum(), reputation.reviewCount())));
+
+        return reputations.size();
     }
 
     /**

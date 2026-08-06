@@ -10,6 +10,7 @@ import com.petvacay.identity.domain.model.Species;
 import com.petvacay.identity.domain.model.UserAccount;
 import com.petvacay.identity.domain.model.VerificationStatus;
 import com.petvacay.identity.ports.in.IdentityUseCases.LoginUseCase;
+import com.petvacay.identity.ports.in.IdentityUseCases.SitterVerificationUseCase;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -23,6 +24,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -49,6 +51,17 @@ public final class IdentityDtos {
             return new UserResponse(user.id(), user.email(), user.firstName(), user.lastName(),
                     user.roles(), user.isActive());
         }
+    }
+
+    /**
+     * Correccion de los datos de contacto desde el back-office. No incluye roles
+     * ni fecha de nacimiento a proposito: cambiar eso no es corregir una errata,
+     * es alterar quien es alguien y que puede hacer en la plataforma.
+     */
+    public record UpdateUserRequest(
+            @NotBlank @Email(message = "El correo electrónico no es válido") String email,
+            @NotBlank(message = "El nombre es obligatorio") String firstName,
+            @NotBlank(message = "Los apellidos son obligatorios") String lastName) {
     }
 
     public record LoginRequest(
@@ -106,6 +119,15 @@ public final class IdentityDtos {
             @NotNull(message = "El tipo de vivienda es obligatorio") HomeType homeType,
             double latitude,
             double longitude,
+            // Direccion legible de la que salieron las coordenadas. Se guarda para
+            // que el cuidador pueda releer y corregir lo que puso: unas coordenadas
+            // sueltas no se pueden ni verificar ni editar a mano.
+            @Size(max = 500) String address,
+            // Los pide la aplicacion siempre (la planta, solo en apartamento) pero
+            // la regla vive en SitterProfile, que es quien sabe el tipo de
+            // vivienda; aqui solo se acota la longitud.
+            @Size(max = 20) String streetNumber,
+            @Size(max = 50) String floorDoor,
             @NotEmpty(message = "Debes ofrecer al menos un servicio con su tarifa")
             Map<ServiceType, @Positive(message = "La tarifa debe ser mayor que cero") BigDecimal> servicePrices,
             @Min(value = 1, message = "La capacidad mínima es 1 mascota") int maxSimultaneousPets,
@@ -132,25 +154,131 @@ public final class IdentityDtos {
      * porque quien las recibe ya sabe de quien esta hablando y no justifica una
      * consulta extra a la tabla de usuarios.
      */
+    /**
+     * Ficha completa de un cuidador para el back-office.
+     *
+     * <p>Es un DTO aparte y no el {@link SitterProfileResponse} de siempre porque
+     * lleva datos que NO deben salir en la vista publica de un perfil: el correo
+     * electronico, la referencia del documento de identidad subido y si la cuenta
+     * sigue activa. Quien verifica un KYC necesita exactamente eso — contrastar
+     * el documento con la persona — y cualquier visitante del buscador, no.
+     */
+    public record AdminSitterResponse(
+            UUID sitterId,
+            String firstName,
+            String lastName,
+            String email,
+            LocalDate birthDate,
+            boolean accountActive,
+            Instant registeredAt,
+            String description,
+            HomeType homeType,
+            double latitude,
+            double longitude,
+            String address,
+            String streetNumber,
+            String floorDoor,
+            // Direccion de una linea, ya montada: el panel la enseña tal cual y
+            // no tiene que saber en que orden se concatenan las tres partes.
+            String fullAddress,
+            Map<ServiceType, BigDecimal> servicePrices,
+            String currency,
+            int maxSimultaneousPets,
+            Set<Species> acceptedSpecies,
+            BigDecimal maxPetWeightKg,
+            String photoUrl,
+            VerificationStatus verificationStatus,
+            String identityDocumentReference,
+            boolean searchable,
+            String rejectionReason,
+            Instant verifiedAt) {
+
+        public static AdminSitterResponse from(SitterVerificationUseCase.SitterDossier dossier) {
+            SitterProfile profile = dossier.profile();
+            UserAccount account = dossier.account();
+
+            Map<ServiceType, BigDecimal> servicePrices = new EnumMap<>(ServiceType.class);
+            profile.servicePrices().forEach((type, money) -> servicePrices.put(type, money.amount()));
+
+            return new AdminSitterResponse(
+                    profile.sitterId(),
+                    account == null ? null : account.firstName(),
+                    account == null ? null : account.lastName(),
+                    account == null ? null : account.email(),
+                    account == null ? null : account.birthDate(),
+                    account != null && account.isActive(),
+                    account == null ? null : account.createdAt(),
+                    profile.description(), profile.homeType(),
+                    profile.location().latitude(), profile.location().longitude(),
+                    profile.location().address(), profile.location().streetNumber(),
+                    profile.location().floorDoor(), profile.location().fullAddress(),
+                    servicePrices, profile.minPrice().currency().getCurrencyCode(),
+                    profile.maxSimultaneousPets(), profile.acceptedSpecies(), profile.maxPetWeightKg(),
+                    profile.photoUrl(), profile.verificationStatus(),
+                    profile.identityDocumentReference(), profile.isSearchable(),
+                    profile.rejectionReason(), profile.verifiedAt());
+        }
+    }
+
+    /** Envoltorio de paginacion; el total permite pintar el paginador. */
+    public record PageResponse<T>(List<T> content, int page, int size, long totalElements,
+                                  int totalPages) {
+
+        public static <D, R> PageResponse<R> from(com.petvacay.shared.domain.Page<D> page,
+                                                  java.util.function.Function<D, R> mapper) {
+            return new PageResponse<>(page.content().stream().map(mapper).toList(),
+                    page.page(), page.size(), page.totalElements(), page.totalPages());
+        }
+    }
+
+    /**
+     * Perfil del cuidador.
+     *
+     * <p>La direccion ({@code address}, {@code streetNumber}, {@code floorDoor},
+     * {@code fullAddress}) NO viaja en la variante publica — la que devuelve
+     * {@code GET /sitters/{id}/profile}, alcanzable por cualquier cuenta
+     * autenticada, no solo por quien ha reservado. Revelarla ahi permitiria a
+     * cualquiera con una cuenta averiguar donde vive un cuidador sin haber
+     * llegado siquiera a pagar (negocio.md 4.2, "Franja de entrega y
+     * recogida"): la direccion exacta solo se entrega al cliente de una reserva
+     * ya confirmada, a traves de {@code booking-service}
+     * ({@code GET /bookings/{id}/handoff}).
+     *
+     * <p>Si se ve completa es porque la ha pedido su propio dueno (al crear,
+     * editar o consultar {@code GET /sitters/profile}) o el equipo de
+     * administracion, que ya tiene su propio DTO ({@link AdminSitterResponse}).
+     */
     public record SitterProfileResponse(
             UUID sitterId, String firstName, String description, HomeType homeType,
-            double latitude, double longitude,
+            double latitude, double longitude, String address,
+            String streetNumber, String floorDoor, String fullAddress,
             Map<ServiceType, BigDecimal> servicePrices, String currency, int maxSimultaneousPets,
             Set<Species> acceptedSpecies, BigDecimal maxPetWeightKg, String photoUrl,
             VerificationStatus verificationStatus, boolean searchable,
             String rejectionReason, Instant verifiedAt) {
 
+        /** Vista del propio dueno del perfil: incluye la direccion completa. */
         public static SitterProfileResponse from(SitterProfile profile) {
-            return from(profile, null);
+            return build(profile, null, true);
         }
 
+        /** Vista publica (buscador, ficha antes de reservar): sin direccion. */
         public static SitterProfileResponse from(SitterProfile profile, String firstName) {
+            return build(profile, firstName, false);
+        }
+
+        private static SitterProfileResponse build(SitterProfile profile, String firstName,
+                                                    boolean includeAddress) {
             Map<ServiceType, BigDecimal> servicePrices = new EnumMap<>(ServiceType.class);
             profile.servicePrices().forEach((type, money) -> servicePrices.put(type, money.amount()));
 
             return new SitterProfileResponse(
                     profile.sitterId(), firstName, profile.description(), profile.homeType(),
                     profile.location().latitude(), profile.location().longitude(),
+                    includeAddress ? profile.location().address() : null,
+                    includeAddress ? profile.location().streetNumber() : null,
+                    includeAddress ? profile.location().floorDoor() : null,
+                    includeAddress ? profile.location().fullAddress() : null,
                     servicePrices, profile.minPrice().currency().getCurrencyCode(),
                     profile.maxSimultaneousPets(), profile.acceptedSpecies(), profile.maxPetWeightKg(),
                     profile.photoUrl(), profile.verificationStatus(), profile.isSearchable(),

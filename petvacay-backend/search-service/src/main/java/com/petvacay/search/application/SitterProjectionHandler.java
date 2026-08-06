@@ -122,4 +122,14 @@ public class SitterProjectionHandler {
     public void onResenaCreada(BookingEvents.ResenaCreadaEvent event) {
         readModel.recordReview(event.sitterId(), event.rating());
     }
+
+    /**
+     * Reconstruccion de la reputacion desde el modelo de escritura. Pisa lo que
+     * hubiera acumulado la proyeccion en vez de sumarse a ello: booking-service
+     * es la fuente de verdad de cuantas resenas hay y cuanto suman.
+     */
+    public void onReputacionRecalculada(BookingEvents.ReputacionRecalculadaEvent event) {
+        readModel.setReputation(event.sitterId(), event.ratingSum(), event.reviewCount());
+        log.info("Reputacion del cuidador {} reproyectada: {} resenas", event.sitterId(), event.reviewCount());
+    }
 }

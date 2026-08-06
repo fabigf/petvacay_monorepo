@@ -23,5 +23,12 @@ public enum NotificationType {
     /** A ambas partes: el equipo de administracion resolvio la incidencia. */
     DISPUTE_RESOLVED,
     /** Al cliente y al equipo de soporte: alerta medica sobre la mascota. */
-    PET_EMERGENCY
+    PET_EMERGENCY,
+
+    /** Al administrador: un cuidador ha subido su documento y espera verificacion. */
+    SITTER_PENDING_REVIEW,
+    /** Al cuidador: ha superado la verificacion y ya aparece en el buscador. */
+    SITTER_APPROVED,
+    /** Al cuidador: su verificacion se ha rechazado y puede volver a intentarlo. */
+    SITTER_REJECTED
 }
