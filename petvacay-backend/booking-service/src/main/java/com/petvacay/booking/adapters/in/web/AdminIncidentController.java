@@ -7,7 +7,10 @@ import com.petvacay.booking.ports.in.IncidentUseCase;
 import com.petvacay.shared.domain.Page;
 import com.petvacay.shared.security.AuthenticatedUser;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,8 +31,14 @@ import java.util.UUID;
  * el resto de {@code /api/v1/admin/**}.
  */
 @RestController
+@Validated
 @RequestMapping("/api/v1/admin/incidents")
 public class AdminIncidentController {
+
+    /** Mismo tope que los listados de identity-service, y por el mismo motivo. */
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final String PAGE_MESSAGE = "La página no puede ser negativa";
+    private static final String SIZE_MESSAGE = "El tamaño de página debe estar entre 1 y 100";
 
     private final IncidentUseCase incidents;
 
@@ -45,8 +54,9 @@ public class AdminIncidentController {
     public PageResponse<IncidentResponse> list(
             @RequestParam(required = false) IncidentStatus status,
             @RequestParam(required = false) IncidentType type,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = PAGE_MESSAGE) int page,
+            @RequestParam(defaultValue = "20") @Min(value = 1, message = SIZE_MESSAGE)
+            @Max(value = MAX_PAGE_SIZE, message = SIZE_MESSAGE) int size) {
 
         Page<Incident> found = incidents.search(status, type, page, size);
         return new PageResponse<>(found.content().stream().map(IncidentResponse::from).toList(),

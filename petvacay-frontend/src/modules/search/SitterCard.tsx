@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import type { HomeType, ServiceType, SitterSearchResult, Species } from '@/core/api/types'
 import { Button, Card } from '@/shared/components/ui'
 import { StarRating } from '@/shared/components/StarRating'
+import { formatMoney } from '@/shared/format'
 import { SitterReviewsModal } from '@/modules/reviews/SitterReviewsModal'
 
 const homeTypeLabels: Record<HomeType, string> = {
@@ -42,7 +43,7 @@ export function SitterCard({ sitter }: { sitter: SitterSearchResult }) {
   const [showReviews, setShowReviews] = useState(false)
 
   return (
-    <Card className="flex flex-col gap-3">
+    <Card interactive className="flex h-full flex-col gap-3">
       <div className="flex items-start gap-3">
         {sitter.photoUrl ? (
           <img
@@ -106,16 +107,18 @@ export function SitterCard({ sitter }: { sitter: SitterSearchResult }) {
         </Tag>
       </div>
 
-      <div className="flex items-end justify-between gap-3">
-        <p className="text-sm text-slate-600">
+      {/* Separador antes del precio: cierra la ficha y evita que la tarifa se
+          lea como una etiqueta más de la fila de arriba. */}
+      <div className="mt-auto flex items-end justify-between gap-3 border-t border-sand-100 pt-3">
+        <div>
           {/* Puede ofrecer alojamiento, guardería o paseos, cada uno con su
               propia tarifa: esto es la más barata de su catálogo, no "la"
               tarifa — por eso "desde" en vez de fijar una unidad ("/ noche"). */}
-          <span className="ml-1">Desde </span>
-          <span className="text-xl font-bold text-slate-800">
-            {sitter.pricePerNight.toFixed(2)} {sitter.currency === 'EUR' ? '€' : sitter.currency}
-          </span>
-        </p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Desde</p>
+          <p className="text-xl font-bold tabular-nums text-slate-900">
+            {formatMoney(sitter.pricePerNight, sitter.currency)}
+          </p>
+        </div>
         <Button onClick={() => navigate(`/bookings/new/${sitter.sitterId}`)}>Reservar</Button>
       </div>
 

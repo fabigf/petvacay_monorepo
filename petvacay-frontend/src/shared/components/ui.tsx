@@ -56,13 +56,46 @@ export function Button({
 export function Card({
   children,
   className = '',
+  interactive = false,
 }: {
   children: ReactNode
   className?: string
+  /**
+   * La tarjeta entera lleva a algún sitio. Añade respuesta al puntero para que
+   * se note que es pulsable: sin ella, una tarjeta clicable es indistinguible
+   * de un bloque de texto.
+   */
+  interactive?: boolean
+}) {
+  const interactiveStyles = interactive
+    ? 'transition hover:border-brand-300 hover:shadow-md'
+    : ''
+  return (
+    <div
+      className={`rounded-xl border border-sand-200 bg-white p-5 shadow-sm ${interactiveStyles} ${className}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+/**
+ * Dato etiquetado: el patrón «rótulo pequeño arriba, valor destacado debajo»
+ * que repiten el detalle de reserva, el panel y la ficha del cuidador.
+ */
+export function DataPoint({
+  label,
+  value,
+  align = 'left',
+}: {
+  label: ReactNode
+  value: ReactNode
+  align?: 'left' | 'right'
 }) {
   return (
-    <div className={`rounded-xl border border-sand-200 bg-white p-5 shadow-sm ${className}`}>
-      {children}
+    <div className={align === 'right' ? 'text-right' : ''}>
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="mt-0.5 text-sm text-slate-800">{value}</div>
     </div>
   )
 }
@@ -129,11 +162,36 @@ export function Badge({
   )
 }
 
-export function EmptyState({ title, description }: { title: string; description?: string }) {
+/**
+ * Hueco sin contenido.
+ *
+ * <p>Admite un icono y una acción porque un vacío casi nunca es un callejón sin
+ * salida: casi siempre hay algo que la persona puede hacer para llenarlo, y
+ * ofrecérselo ahí ahorra tener que buscarlo en el menú.
+ */
+export function EmptyState({
+  title,
+  description,
+  icon,
+  action,
+}: {
+  title: string
+  description?: string
+  icon?: ReactNode
+  action?: ReactNode
+}) {
   return (
-    <div className="rounded-xl border border-dashed border-sand-200 bg-white/60 p-10 text-center">
+    <div className="rounded-xl border border-dashed border-sand-300 bg-white/60 p-10 text-center">
+      {icon && (
+        <div aria-hidden className="mb-3 text-3xl">
+          {icon}
+        </div>
+      )}
       <p className="font-semibold text-slate-700">{title}</p>
-      {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+      {description && (
+        <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">{description}</p>
+      )}
+      {action && <div className="mt-5 flex justify-center gap-2">{action}</div>}
     </div>
   )
 }

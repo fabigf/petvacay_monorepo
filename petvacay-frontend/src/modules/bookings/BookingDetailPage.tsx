@@ -31,6 +31,7 @@ import type {
 } from '@/core/api/types'
 import { Button, Card, Field, Input, ProcessingNotice, Skeleton } from '@/shared/components/ui'
 import { StarRating } from '@/shared/components/StarRating'
+import { formatDate, formatDateWithWeekday } from '@/shared/format'
 import { useAuthStore } from '@/core/security/authStore'
 import { useProblemToast } from '@/shared/hooks/useProblemToast'
 
@@ -341,8 +342,8 @@ export function BookingDetailPage() {
         <Card>
           <SectionTitle>Servicio</SectionTitle>
           <Row label="Tipo" value={serviceTypeLabels[booking.serviceType]} />
-          <Row label="Entrada" value={booking.startDate} />
-          <Row label="Salida" value={booking.endDate} />
+          <Row label="Entrada" value={formatDateWithWeekday(booking.startDate)} />
+          <Row label="Salida" value={formatDateWithWeekday(booking.endDate)} />
           <Row label="Noches" value={String(booking.nights)} />
           <Row label="Mascotas" value={String(booking.petIds.length)} />
           {booking.scheduledPayoutAt && (
@@ -440,7 +441,7 @@ export function BookingDetailPage() {
 
             {booking.status === 'CONFIRMADO' && (
               <p className="text-sm text-slate-500">
-                El servicio comenzará automáticamente el {booking.startDate}.
+                El servicio comenzará automáticamente el {formatDate(booking.startDate)}.
               </p>
             )}
             {booking.status === 'EN_PROGRESO' && (

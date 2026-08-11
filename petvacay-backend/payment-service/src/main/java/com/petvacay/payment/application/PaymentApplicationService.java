@@ -42,17 +42,23 @@ public class PaymentApplicationService {
     /**
      * Prepara el cobro y devuelve el {@code clientSecret} para Stripe Elements.
      *
-     * <p>El importe **no** llega del cliente: se recibe desde booking-service,
-     * que es quien lo calculó con las reglas de dominio. Aceptar aquí una
-     * cantidad enviada por el navegador permitiría pagar 1 € por una reserva de
-     * 183,75 €.
+     * <p><b>El importe que se cobra es siempre el que calculó booking-service</b>
+     * y que llegó por {@code ReservaSolicitadaEvent}, nunca el que viene en la
+     * petición. Hasta que esto se corrigió, la cantidad del cuerpo se pasaba tal
+     * cual a la pasarela y bastaba con enviar {@code {"amount": 0.01}} para
+     * generar un cobro de un céntimo por una reserva de cientos de euros.
+     *
+     * <p>El importe recibido no se ignora en silencio: si no coincide con el
+     * real se rechaza la operación. Un desajuste significa que la pantalla le
+     * está enseñando al cliente un precio distinto del que se le va a cobrar, y
+     * cobrar de más sin avisar sería tan malo como cobrar de menos.
      *
      * <p>La clave de idempotencia se deriva del identificador de la reserva, de
      * modo que reintentar el pago de la misma reserva reutiliza el
      * {@code PaymentIntent} existente en lugar de crear cobros paralelos.
      */
     @Transactional
-    public PaymentGatewayPort.PaymentIntent preparePayment(UUID bookingId, UUID actingUserId, Money amount) {
+    public PaymentGatewayPort.PaymentIntent preparePayment(UUID bookingId, UUID actingUserId, Money claimedAmount) {
         BookingParties parties = bookingParties.findByBookingId(bookingId)
                 .orElseThrow(() -> BusinessRuleViolationException.conflict(
                         "ERR_BOOKING_NOT_PAYABLE", "Reserva no disponible para pago",
@@ -63,7 +69,26 @@ public class PaymentApplicationService {
                     403, "Solo el cliente de la reserva puede pagarla.");
         }
 
-        return gateway.createPaymentIntent(bookingId, parties.clientId(), amount,
+        if (parties.amountToPay() == null) {
+            // Reserva anterior a que se guardara el importe: se prefiere fallar
+            // de forma visible antes que cobrar una cantidad sin respaldo.
+            throw BusinessRuleViolationException.conflict(
+                    "ERR_BOOKING_AMOUNT_UNKNOWN", "Importe no disponible",
+                    "No consta el importe de esta reserva. Vuelve a solicitarla para poder pagarla.");
+        }
+
+        if (!parties.matchesAmount(claimedAmount)) {
+            log.warn("Importe rechazado para la reserva {}: se pidió cobrar {} y el importe real es {}",
+                    bookingId, claimedAmount, parties.amountToPay());
+            throw BusinessRuleViolationException.conflict(
+                    "ERR_PAYMENT_AMOUNT_MISMATCH", "El importe no coincide",
+                    "El importe de esta reserva ha cambiado. Vuelve a abrirla para ver el precio actual.");
+        }
+
+        // Se cobra el importe de la reserva, no el recibido, aunque a estas
+        // alturas sean iguales: si mañana se relajara la comprobacion de arriba,
+        // el cobro seguiria siendo el correcto.
+        return gateway.createPaymentIntent(bookingId, parties.clientId(), parties.amountToPay(),
                 "pay-" + bookingId);
     }
 

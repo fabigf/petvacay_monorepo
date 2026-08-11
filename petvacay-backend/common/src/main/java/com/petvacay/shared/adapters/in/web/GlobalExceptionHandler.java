@@ -3,6 +3,7 @@ package com.petvacay.shared.adapters.in.web;
 import com.petvacay.shared.domain.BusinessRuleViolationException;
 import com.petvacay.shared.domain.ResourceNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -13,6 +14,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -106,6 +108,59 @@ public class GlobalExceptionHandler {
         problem.setProperty("invalid_params",
                 List.of(Map.of("name", ex.getName(), "reason", "Valor no válido")));
         return ResponseEntity.badRequest().body(problem);
+    }
+
+    /**
+     * Falta un parametro de query obligatorio.
+     *
+     * <p>Sin este handler la excepcion caia en el {@code Exception.class} de mas
+     * abajo y llamar a {@code /bookings/availability} sin argumentos devolvia un
+     * 500: un "error del servidor" que en realidad era una peticion incompleta.
+     * Ademas de ser la respuesta equivocada, un 500 invita a reintentar algo que
+     * nunca va a funcionar y ensucia los registros de errores reales.
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ProblemDetail> handleMissingParameter(MissingServletRequestParameterException ex,
+                                                                HttpServletRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
+                "Falta el parámetro obligatorio '" + ex.getParameterName() + "'.");
+        problem.setTitle("Parámetro obligatorio");
+        problem.setType(URI.create(ERROR_BASE_URI + "missing-parameter"));
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("code", "ERR_MISSING_PARAMETER");
+        problem.setProperty("invalid_params",
+                List.of(Map.of("name", ex.getParameterName(), "reason", "Es obligatorio")));
+        return ResponseEntity.badRequest().body(problem);
+    }
+
+    /**
+     * Restricciones {@code @Min}, {@code @Max} y similares sobre parametros de
+     * query, que Spring valida fuera del cuerpo y por tanto no pasan por
+     * {@link MethodArgumentNotValidException}.
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ProblemDetail> handleConstraintViolation(ConstraintViolationException ex,
+                                                                   HttpServletRequest request) {
+        List<Map<String, String>> invalidParams = ex.getConstraintViolations().stream()
+                .map(violation -> Map.of(
+                        "name", lastNodeOf(violation.getPropertyPath().toString()),
+                        "reason", violation.getMessage()))
+                .toList();
+
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
+                "Algunos parámetros de la petición no son válidos.");
+        problem.setTitle("Parámetro inválido");
+        problem.setType(URI.create(ERROR_BASE_URI + "invalid-parameter"));
+        problem.setInstance(URI.create(request.getRequestURI()));
+        problem.setProperty("code", "ERR_INVALID_PARAMETER");
+        problem.setProperty("invalid_params", invalidParams);
+        return ResponseEntity.badRequest().body(problem);
+    }
+
+    /** {@code searchSitters.radiusKm} -> {@code radiusKm} */
+    private static String lastNodeOf(String propertyPath) {
+        int lastDot = propertyPath.lastIndexOf('.');
+        return lastDot < 0 ? propertyPath : propertyPath.substring(lastDot + 1);
     }
 
     /** Ruta inexistente: debe responder 404, no caer en el handler generico. */

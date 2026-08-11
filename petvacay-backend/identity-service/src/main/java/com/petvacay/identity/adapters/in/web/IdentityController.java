@@ -28,6 +28,9 @@ import com.petvacay.shared.domain.BusinessRuleViolationException;
 import com.petvacay.shared.security.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -59,8 +62,21 @@ import java.util.UUID;
  * sustituto provisional y que el propio cliente podia falsificar a voluntad.
  */
 @RestController
+@Validated
 @RequestMapping("/api/v1")
 public class IdentityController {
+
+    /**
+     * Tope de tamaño de pagina de los listados del back-office.
+     *
+     * <p>Sin el, {@code ?size=100000} obliga al servicio a materializar y
+     * serializar la tabla entera en una sola respuesta. No es un problema de
+     * permisos — quien lo pide ya es administrador — sino de que un parametro
+     * mal puesto no debe poder tumbar el servicio para todos los demas.
+     */
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final String PAGE_MESSAGE = "La página no puede ser negativa";
+    private static final String SIZE_MESSAGE = "El tamaño de página debe estar entre 1 y 100";
 
     private final RegisterUserUseCase registerUser;
     private final LoginUseCase login;
@@ -319,8 +335,9 @@ public class IdentityController {
     public PageResponse<AdminSitterResponse> searchSitters(
             @RequestParam(required = false) VerificationStatus status,
             @RequestParam(required = false) String query,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = PAGE_MESSAGE) int page,
+            @RequestParam(defaultValue = "20") @Min(value = 1, message = SIZE_MESSAGE)
+            @Max(value = MAX_PAGE_SIZE, message = SIZE_MESSAGE) int size) {
 
         return PageResponse.from(
                 sitterVerification.searchSitters(
@@ -354,8 +371,9 @@ public class IdentityController {
             @RequestParam(required = false) String query,
             @RequestParam(required = false) Role role,
             @RequestParam(required = false) Boolean active,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "0") @Min(value = 0, message = PAGE_MESSAGE) int page,
+            @RequestParam(defaultValue = "20") @Min(value = 1, message = SIZE_MESSAGE)
+            @Max(value = MAX_PAGE_SIZE, message = SIZE_MESSAGE) int size) {
 
         return PageResponse.from(
                 userModeration.listUsers(

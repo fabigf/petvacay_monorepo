@@ -38,8 +38,27 @@ public class StripePaymentGatewayAdapter implements PaymentGatewayPort {
 
     private final StripeClient stripe;
 
-    public StripePaymentGatewayAdapter(@Value("${petvacay.payments.stripe.secret-key}") String secretKey) {
-        this.stripe = StripeClient.builder().setApiKey(secretKey).build();
+    /**
+     * @param apiBase destino de las llamadas. Vacío — lo normal — deja el que
+     *                trae el SDK ({@code https://api.stripe.com}). Se puede
+     *                apuntar a otra URL para dirigir este mismo adaptador contra
+     *                {@code stripe-mock}, el servidor de pruebas oficial de
+     *                Stripe, y comprobar así que las peticiones que construye
+     *                son válidas sin necesidad de una cuenta ni de claves
+     *                reales. Es la única forma de ejercitar este código: el
+     *                adaptador simulado prueba el resto del sistema, pero no
+     *                esta clase.
+     */
+    public StripePaymentGatewayAdapter(
+            @Value("${petvacay.payments.stripe.secret-key}") String secretKey,
+            @Value("${petvacay.payments.stripe.api-base:}") String apiBase) {
+
+        StripeClient.StripeClientBuilder builder = StripeClient.builder().setApiKey(secretKey);
+        if (!apiBase.isBlank()) {
+            log.warn("Stripe apuntando a {} en lugar de la API real", apiBase);
+            builder.setApiBase(apiBase);
+        }
+        this.stripe = builder.build();
     }
 
     @Override

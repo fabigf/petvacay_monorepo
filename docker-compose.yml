@@ -192,6 +192,27 @@ services:
       timeout: 5s
       retries: 15
 
+  # Servidor de pruebas oficial de Stripe (github.com/stripe/stripe-mock).
+  #
+  # Responde como la API real a partir de su especificacion OpenAPI, SIN cuenta
+  # ni claves: es lo que permite verificar StripePaymentGatewayAdapter — el
+  # adaptador de verdad — sin registrarse en Stripe. Lo usa
+  # `StripeGatewayContractTest`, que se salta solo si esto no esta levantado.
+  #
+  # No mantiene estado: no implementa idempotencia, ni webhooks, ni cobros. Sirve
+  # para comprobar que las peticiones que construimos son validas y que las
+  # respuestas se parsean, no para simular un pago de principio a fin.
+  #
+  # Va en un perfil aparte para que `docker compose up` no lo arranque en el uso
+  # normal: solo hace falta al ejecutar ese test.
+  #   docker compose --profile stripe-test up -d stripe-mock
+  stripe-mock:
+    image: stripe/stripe-mock:latest
+    container_name: petvacay-stripe-mock
+    profiles: ['stripe-test']
+    ports:
+      - '12111:12111'
+
   gateway-service:
     build:
       context: ./petvacay-backend

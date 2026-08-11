@@ -12,6 +12,7 @@ import {
   Select,
   Skeleton,
 } from '@/shared/components/ui'
+import { PageHeader } from '@/shared/components/PageHeader'
 import { useProblemToast } from '@/shared/hooks/useProblemToast'
 
 const speciesLabels: Record<Species, string> = {
@@ -96,7 +97,10 @@ export function PetsPage() {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
       <section>
-        <h1 className="mb-4 text-2xl font-bold text-slate-800">Mis mascotas</h1>
+        <PageHeader
+          title="Mis mascotas"
+          subtitle="Su ficha la ve el cuidador de cada reserva: cuanto más completa, mejor podrá cuidarlas."
+        />
 
         {loading ? (
           <div className="grid gap-4 sm:grid-cols-2">

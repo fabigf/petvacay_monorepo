@@ -8,6 +8,7 @@ import { getSitterProfile } from '@/modules/onboarding/onboardingApi'
 import { listReviewsForSitter } from '@/modules/reviews/reviewsApi'
 import type { Pet, Review, ServiceType, SitterProfile } from '@/core/api/types'
 import { Button, Card, EmptyState, Field, Select, Skeleton } from '@/shared/components/ui'
+import { PageHeader } from '@/shared/components/PageHeader'
 import { StarRating } from '@/shared/components/StarRating'
 import { useProblemToast } from '@/shared/hooks/useProblemToast'
 
@@ -129,10 +130,12 @@ export function NewBookingPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-1 text-2xl font-bold text-slate-800">Solicitar reserva</h1>
-      <p className="mb-6 text-sm text-slate-500">
-        El cuidador debe aceptar la propuesta antes de que se realice ningún cobro.
-      </p>
+      <PageHeader
+        title="Solicitar reserva"
+        subtitle="El cuidador debe aceptar la propuesta antes de que se realice ningún cobro."
+        backTo="/search"
+        backLabel="Volver al buscador"
+      />
 
       {sitter && (
         <Card className="mb-6">

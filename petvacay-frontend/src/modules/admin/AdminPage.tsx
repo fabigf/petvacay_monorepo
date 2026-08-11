@@ -13,6 +13,8 @@ import { SittersSection } from '@/modules/admin/SittersSection'
 import { IncidentsSection } from '@/modules/admin/IncidentsSection'
 import type { BookingDetail, DisputeResolution, UserProfile } from '@/core/api/types'
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Skeleton } from '@/shared/components/ui'
+import { PageHeader } from '@/shared/components/PageHeader'
+import { formatDateRange, formatMoney } from '@/shared/format'
 import { useProblemToast } from '@/shared/hooks/useProblemToast'
 
 const resolutionLabels: Record<DisputeResolution, string> = {
@@ -90,12 +92,10 @@ export function AdminPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <header>
-        <h1 className="text-2xl font-bold text-slate-800">Administración</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Verificación de cuidadores, resolución de disputas, registro de incidencias y cuentas.
-        </p>
-      </header>
+      <PageHeader
+        title="Administración"
+        subtitle="Verificación de cuidadores, resolución de disputas, registro de incidencias y cuentas."
+      />
 
       <nav className="flex flex-wrap gap-1 border-b border-sand-200">
         {(Object.keys(tabLabels) as Tab[]).map((candidate) => (
@@ -202,11 +202,14 @@ function DisputeCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-semibold text-slate-800">
-            Reserva del {booking.startDate} al {booking.endDate}
+            Reserva del {formatDateRange(booking.startDate, booking.endDate)}
           </p>
           <p className="text-xs text-slate-400">Id de reserva: {booking.bookingId}</p>
           <p className="mt-1 text-sm text-slate-600">
-            Importe en custodia: {booking.finalAmountToPay.toFixed(2)} {booking.currency}
+            Importe en custodia:{' '}
+            <span className="font-semibold tabular-nums text-slate-800">
+              {formatMoney(booking.finalAmountToPay, booking.currency)}
+            </span>
           </p>
           {booking.disputeReason && (
             <p className="mt-1 text-sm text-slate-700">Motivo: {booking.disputeReason}</p>

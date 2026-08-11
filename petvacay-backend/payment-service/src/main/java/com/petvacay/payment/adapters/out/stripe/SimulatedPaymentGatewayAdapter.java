@@ -20,10 +20,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * libro mayor, eventos, máquina de estados — se ejercita igual.
  *
  * <p><b>Lo que esta clase NO demuestra:</b> que la integración real funcione. Un
- * simulador solo prueba el código propio. Verificar la integración de verdad
- * exige claves de prueba de Stripe y ejercitar
- * {@link StripePaymentGatewayAdapter} contra su entorno de test; mientras eso no
- * se haga, la integración con Stripe está implementada pero **no verificada**.
+ * simulador solo prueba el código propio: no puede detectar que un parámetro de
+ * Stripe esté mal construido ni que un importe se convierta mal a céntimos.
+ *
+ * <p>Ese hueco lo cubre ahora {@code StripeGatewayContractTest}, que dirige el
+ * {@link StripePaymentGatewayAdapter} de verdad contra {@code stripe-mock} — el
+ * servidor de pruebas oficial de Stripe, que no exige cuenta ni claves reales.
+ * Queda fuera de su alcance lo que ese mock no simula: idempotencia, webhooks,
+ * firmas y cobros. Eso solo se puede verificar con claves de prueba de una
+ * cuenta de Stripe.
  *
  * <p>Sí reproduce la idempotencia, que es el comportamiento del que depende la
  * corrección del sistema: repetir una operación con la misma clave devuelve el

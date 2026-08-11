@@ -45,6 +45,16 @@
             <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
         </dependency>
         <!--
+            GlobalExceptionHandler traduce ConstraintViolationException (las
+            restricciones @Min/@Max sobre parametros de query) a un 400 con el
+            mismo formato RFC 7807 que el resto. Sin esta dependencia ese caso
+            acabaria en el handler generico y devolveria un 500.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <!--
             Money y DateRange son los tipos sobre los que descansan el dinero y el
             calendario de toda la plataforma, asi que este modulo tambien necesita
             poder probarse. Solo JUnit y AssertJ: aqui no hay contexto de Spring

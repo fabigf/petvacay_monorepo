@@ -58,7 +58,11 @@ public class SettlementHandler {
      */
     @Transactional
     public void onReservaSolicitada(BookingEvents.ReservaSolicitadaEvent event) {
-        bookingParties.save(new BookingParties(event.bookingId(), event.clientId(), event.sitterId()));
+        // Se guarda tambien el importe: es la unica cifra que payment-service
+        // puede considerar autorizada al cobrar, frente a la que envie el
+        // navegador (ver PaymentApplicationService.preparePayment).
+        bookingParties.save(new BookingParties(event.bookingId(), event.clientId(), event.sitterId(),
+                event.amountToPay()));
         log.debug("Partes registradas para la reserva {}", event.bookingId());
     }
 
@@ -72,8 +76,10 @@ public class SettlementHandler {
         // Reescritura defensiva: normalmente ya se registraron al solicitarse la
         // reserva, pero si aquel evento se perdio esta es la ultima oportunidad de
         // saber quien tiene derecho a consultar este libro mayor sin tener que
-        // preguntar a booking-service en cada lectura.
-        bookingParties.save(new BookingParties(event.bookingId(), event.clientId(), event.sitterId()));
+        // preguntar a booking-service en cada lectura. El importe que se guarda es
+        // el realmente cobrado, que a estas alturas es el definitivo.
+        bookingParties.save(new BookingParties(event.bookingId(), event.clientId(), event.sitterId(),
+                event.totalCharged()));
 
         ledger.append(LedgerEntry.of(event.bookingId(), LedgerEntryType.ESCROW_HOLD,
                 event.clientId(), event.totalCharged(), event.occurredAt()));
