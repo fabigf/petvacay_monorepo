@@ -4,6 +4,7 @@ import com.petvacay.payment.application.PaymentApplicationService;
 import com.petvacay.payment.ports.out.PaymentGatewayPort;
 import com.petvacay.shared.domain.Money;
 import com.petvacay.shared.security.AuthenticatedUser;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -36,7 +37,7 @@ public class PaymentIntentController {
     @PostMapping("/bookings/{bookingId}/intent")
     public PaymentIntentResponse createIntent(@PathVariable UUID bookingId,
                                               @AuthenticatedUser UUID actingUserId,
-                                              @RequestBody CreateIntentRequest request) {
+                                              @Valid @RequestBody CreateIntentRequest request) {
         Money amount = new Money(request.amount(), Currency.getInstance(request.currency()));
         PaymentGatewayPort.PaymentIntent intent = payments.preparePayment(bookingId, actingUserId, amount);
         return new PaymentIntentResponse(intent.paymentIntentId(), intent.clientSecret(),

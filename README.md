@@ -545,6 +545,37 @@ implementado contra el SDK oficial y compila, pero **no se ha ejercitado contra
 Stripe**: verificarlo exige claves de prueba reales. Es la unica parte del
 sistema que se entrega implementada pero no verificada de extremo a extremo.
 
+### Probar con Stripe en modo test (local)
+
+Para ver el formulario de tarjeta real (Stripe Elements) en vez del boton de
+pago simulado, hace falta una cuenta de Stripe (gratis) en **modo test** y
+completar `PETVACAY_PAYMENTS_PROVIDER`, `STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET` y `VITE_STRIPE_PUBLISHABLE_KEY` en el `.env`
+(placeholders documentados en [`.env.example`](.env.example)).
+
+El webhook necesita ademas el [Stripe CLI](https://stripe.com/docs/stripe-cli)
+para reenviar eventos a `localhost`, ya que Stripe no puede llamar directamente
+a una maquina de desarrollo:
+
+```bash
+# Una sola vez: vincula el CLI a tu cuenta de Stripe
+stripe login
+
+# Cada sesion de desarrollo, en una terminal aparte (mientras trabajas con el
+# resto del stack ya levantado, por Docker o servicio a servicio):
+stripe listen --forward-to localhost:8080/api/v1/payments/webhooks/stripe
+```
+
+`stripe listen` imprime un `whsec_...` al arrancar — es el valor de
+`STRIPE_WEBHOOK_SECRET`. No es un servicio en segundo plano: hay que
+relanzarlo cada vez que se retoma el desarrollo, y dejarlo corriendo mientras
+se prueban pagos para que los eventos (`payment_intent.succeeded`, etc.)
+lleguen a `payment-service`. El login del CLI si es persistente entre
+sesiones.
+
+Con eso configurado, una tarjeta de prueba tipica es `4242 4242 4242 4242`
+(fecha futura y CVC cualquiera).
+
 ### Despliegue de produccion
 
 ```bash

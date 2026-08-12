@@ -184,6 +184,12 @@ services:
       POSTGRES_USER: petvacay
       POSTGRES_PASSWORD: petvacay
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # Vacias por defecto: sin ellas, payment-service usa el adaptador
+      # `simulated` (ver application.yml). Rellenar en .env con claves sk_test_
+      # para probar contra Stripe real en modo test.
+      PETVACAY_PAYMENTS_PROVIDER: ${PETVACAY_PAYMENTS_PROVIDER:-simulated}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
     ports:
       - '8085:8085'
     healthcheck:
@@ -249,6 +255,11 @@ services:
       # El proxy de Vite reenvia /api al Gateway: React nunca se entera de que
       # hay 4 servicios detras (especificaciones.md / fases.md Fase 4).
       VITE_API_TARGET: http://gateway-service:8080
+      # Vacia por defecto: sin ella, StripePaymentForm cae al formulario
+      # simulado. En modo dev (servidor de Vite) se lee en caliente, sin
+      # rebuild — a diferencia de la imagen de produccion, que la incrusta en
+      # el bundle en tiempo de build (ver docker-compose.prod.yml).
+      VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
     ports:
       - '3000:3000'
     volumes:
